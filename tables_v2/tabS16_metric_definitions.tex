@@ -1,0 +1,42 @@
+\begin{landscape}
+\begingroup
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.96}
+\begin{longtable}{
+>{\raggedright\arraybackslash}p{0.11\linewidth}
+>{\raggedright\arraybackslash}p{0.27\linewidth}
+>{\raggedright\arraybackslash}p{0.14\linewidth}
+>{\raggedright\arraybackslash}p{0.17\linewidth}
+>{\raggedright\arraybackslash}p{0.15\linewidth}}
+\caption{Definitions of evaluation metrics and derived quantities used in the main text and Supporting Information.}
+\label{tab:si-metric-definitions}\\
+\toprule
+Metric & Definition & Aggregation & Parameters & Implementation source \\
+\midrule
+\endfirsthead
+\toprule
+Metric & Definition & Aggregation & Parameters & Implementation source \\
+\midrule
+\endhead
+endpoint ROC-AUC & Mask actual == -1 and compute ROC-AUC only when the remaining endpoint contains both classes. & one dataset, fold, and valid endpoint & binary labels and continuous prediction scores & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} compute\_\allowbreak{}auc} \\
+fold ROC-AUC & Arithmetic mean across valid endpoints in one fold. & one dataset and fold & valid endpoints receive equal weight & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} compute\_\allowbreak{}auc} \\
+five-fold mean and sample SD & Arithmetic mean and sample standard deviation with denominator n - 1. & one model and dataset & seeds 42 to 46 and complete 5 of 5 folds & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} complete\_\allowbreak{}summary} \\
+eight-dataset macro ROC-AUC & Equal-weight arithmetic mean of dataset means. & one model across eight classification datasets & no sample-count or endpoint-count weighting & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} model\_\allowbreak{}macro\_\allowbreak{}summary} \\
+paired dataset delta and win & Subtract right from left within fold and average five fold deltas within a dataset. A positive dataset mean is one win. & matched folds followed by equal-weight datasets & identical scaffold seeds for both models & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} paired\_\allowbreak{}delta\_\allowbreak{}rows} \\
+hierarchical paired bootstrap interval & Resample datasets with replacement, then folds with replacement within each sampled dataset. Average folds within dataset and then average datasets. & 10,000 paired hierarchical bootstrap replicates & seed 42 and percentile interval at 2.5 and 97.5 & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} hierarchical\_\allowbreak{}bootstrap} \\
+Wilcoxon signed-rank test & Two-sided Wilcoxon signed-rank test. & one planned comparison & zero\_method=wilcox and Holm adjustment & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} wilcoxon\_\allowbreak{}holm} \\
+conditional interaction & Full - (I1+I2) - (I1+I3) + I1. & matched folds followed by equal-weight datasets & reported separately for TPSA and MolLogP & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} build\_\allowbreak{}interaction\_\allowbreak{}rows} \\
+descriptor-region occupancy & Assign fixed left-closed, right-open intervals with np.digitize and report count and fraction. & one descriptor region & eight fixed regions per descriptor & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} descriptor\_\allowbreak{}profiles} \\
+descriptor-region chemical profile & Region mean and sample SD for each profile variable. & one region and profile variable & regions with fewer than 10 molecules are masked in heatmaps & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} descriptor\_\allowbreak{}profiles} \\
+active pretraining epoch time & Exclude the first epoch of each Slurm segment and values above the segment-specific Q3 + 3 IQR upper outer fence. & median and quartiles within model & queue and inter-job gaps are outside the epoch timer & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} active\_\allowbreak{}epoch\_\allowbreak{}timing\_\allowbreak{}audit} \\
+stored and active model cost & Stored parameters include all branches. Expected active branch cost is occupancy weighted for selected KAN configurations. & one architecture configuration & one MAC equals two FLOPs. KAN excludes spline-basis construction. Routed controls exclude softmax and dispatch overhead & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}build\_\allowbreak{}analysis\_\allowbreak{}v2.py,\allowbreak{} architecture\_\allowbreak{}complexity} \\
+pooled molecular embedding & Mean of the first n\_i valid node rows. & one molecule, model, dataset, and fold & n\_i equals the RDKit atom count & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}analyze\_\allowbreak{}embeddings\_\allowbreak{}v2.py,\allowbreak{} mean\_\allowbreak{}pool} \\
+embedding reduction and t-SNE & Model-specific PCA to at most 50 dimensions, L2 normalization, then two-dimensional t-SNE for visualization. & one dataset, partition, model, and fold & fold 1, perplexity 30, PCA initialization, learning\_rate=auto, 2000 iterations, and seed 42 & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}analyze\_\allowbreak{}embeddings\_\allowbreak{}v2.py} \\
+silhouette score & Mean Euclidean silhouette coefficient. & one model, dataset, partition, and fold & regions with fewer than two samples are excluded & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}analyze\_\allowbreak{}embeddings\_\allowbreak{}v2.py,\allowbreak{} separation\_\allowbreak{}metrics} \\
+Davies-Bouldin index & Mean worst-case ratio of within-region dispersion to centroid separation. & one model, dataset, partition, and fold & lower values indicate stronger separation & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}analyze\_\allowbreak{}embeddings\_\allowbreak{}v2.py,\allowbreak{} separation\_\allowbreak{}metrics} \\
+inter-to-intra distance ratio & Mean distance between regions divided by mean non-diagonal distance within regions. & one model, dataset, partition, and fold & regions with fewer than two samples are excluded & {\ttfamily\tiny analysis\_\allowbreak{}v2/\allowbreak{}analyze\_\allowbreak{}embeddings\_\allowbreak{}v2.py,\allowbreak{} separation\_\allowbreak{}metrics} \\
+\bottomrule
+\end{longtable}
+\endgroup
+\end{landscape}

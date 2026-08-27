@@ -1,0 +1,48 @@
+# External molecular data and generated tensors
+MoleSG/Data/
+MoleSG/Downstream/Data/
+MoleSG/pretrain/Model/
+MoleSG/pretrain/Result/
+MoleSG/Downstream/Model/
+MoleSG/Downstream/Model_evalfix*/
+MoleSG/Downstream/Result/
+MoleSG/Downstream/Result_evalfix*/
+raw_results/*
+!raw_results/README.md
+checkpoints/*
+!checkpoints/README.md
+
+# Large model and embedding formats
+*.pth
+*.pt
+*.ckpt
+*.pickle
+*.pkl
+*.npz
+
+# Scheduler and local runtime files
+*.out
+*.err
+*.pid
+nohup.out
+logs/
+slurm/
+
+# Generated figures and LaTeX build products
+/figures/
+tables_v2/slurm_accounting_snapshot.csv
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.synctex.gz
+
+# Python and editor files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,46 @@
+{
+  "molecule": "Ibuprofen",
+  "example_status": "illustrative molecule; not claimed as a ZINC 250K row",
+  "input_smiles": "CC(C)Cc1ccc(cc1)C(C)C(=O)O",
+  "canonical_smiles": "CC(C)Cc1ccc(C(C)C(=O)O)cc1",
+  "molecular_formula": "C13H18O2",
+  "rdkit_version": "2022.09.5",
+  "tpsa_angstrom_squared": 37.3,
+  "tpsa_edges": [
+    20.0,
+    40.0,
+    60.0,
+    80.0,
+    100.0,
+    120.0,
+    140.0
+  ],
+  "tpsa_region_zero_based": 1,
+  "tpsa_branch_family": "KAN",
+  "mol_logp": 3.073200000000001,
+  "mol_logp_edges": [
+    -1.0,
+    0.0,
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0
+  ],
+  "mol_logp_region_zero_based": 5,
+  "mol_logp_branch_family": "MLP",
+  "tpsa_selected_kan_regions": [
+    0,
+    1,
+    2,
+    3,
+    5
+  ],
+  "mol_logp_selected_kan_regions": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "assignment_code": "MoleSG/pretrain/prior_moe.py"
+}

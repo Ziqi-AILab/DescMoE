@@ -1,0 +1,10 @@
+configuration,stored_ffn_parameters,router_parameters,stored_total_parameters_analytical,active_ffn_parameters_expected,active_ffn_macs_per_token,flops_convention,active_ffn_flops_per_token,notes
+Vanilla,1052672,0,3743505,1052672,1048576,2 FLOPs per MAC,2097152,Eight dense FFN layers
+MoFE-last all-MLP,1973760,0,4664593,1052672,1048576,2 FLOPs per MAC,2097152,One descriptor-assigned branch active in the last layer; selected-KAN expectation is occupancy-weighted on ZINC15
+TPSA selected-KAN,7214080,0,9904913,1803232,1799503,2 FLOPs per MAC,3599006,One descriptor-assigned branch active in the last layer; selected-KAN expectation is occupancy-weighted on ZINC15
+MolLogP selected-KAN,6166016,0,8856849,1801555,1797825,2 FLOPs per MAC,3595650,One descriptor-assigned branch active in the last layer; selected-KAN expectation is occupancy-weighted on ZINC15
+MoFE-last all-KAN,10358272,0,13049105,2100736,2097152,2 FLOPs per MAC,4194304,One descriptor-assigned branch active in the last layer; selected-KAN expectation is occupancy-weighted on ZINC15
+Routed top1,8421376,16384,11128593,1052672,1064960,2 FLOPs per MAC,2129920,All eight layers routed; excludes dispatch and softmax overhead
+Routed top2,8421376,16384,11128593,2105344,2113536,2 FLOPs per MAC,4227072,All eight layers routed; excludes dispatch and softmax overhead
+Routed top3,8421376,16384,11128593,3158016,3162112,2 FLOPs per MAC,6324224,All eight layers routed; excludes dispatch and softmax overhead
+Routed top4,8421376,16384,11128593,4210688,4210688,2 FLOPs per MAC,8421376,All eight layers routed; excludes dispatch and softmax overhead

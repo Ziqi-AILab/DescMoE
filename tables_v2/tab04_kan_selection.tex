@@ -1,0 +1,29 @@
+\begin{table*}[t]
+\centering
+\caption{Single-branch KAN screening after fixing the last-layer placement. A branch is assigned KAN when its eight-task macro AUC is higher than the matched all-MLP branch baseline. Delta is reported in percentage points.}
+\label{tab:kan-selection}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrl}
+\toprule
+Descriptor & Branch & KAN macro & MLP macro & Delta & Wins & Min. folds & Assignment \\
+\midrule
+TPSA & k0 & 0.7856 & 0.7818 & +0.372 & 3/8 & 5 & KAN \\
+ & k1 & 0.7827 & 0.7818 & +0.082 & 3/8 & 5 & KAN \\
+ & k2 & 0.7876 & 0.7818 & +0.578 & 5/8 & 5 & KAN \\
+ & k3 & 0.7842 & 0.7818 & +0.240 & 3/8 & 5 & KAN \\
+ & k4 & 0.7805 & 0.7818 & -0.131 & 5/8 & 5 & MLP \\
+ & k5 & 0.7828 & 0.7818 & +0.099 & 3/8 & 5 & KAN \\
+ & k6 & 0.7768 & 0.7818 & -0.500 & 2/8 & 5 & MLP \\
+ & k7 & 0.7809 & 0.7818 & -0.092 & 2/8 & 5 & MLP \\
+\midrule
+\MolLogP & k0 & 0.7776 & 0.7831 & -0.546 & 4/8 & 5 & MLP \\
+ & k1 & 0.7896 & 0.7831 & +0.651 & 4/8 & 5 & KAN \\
+ & k2 & 0.7857 & 0.7831 & +0.263 & 4/8 & 5 & KAN \\
+ & k3 & 0.7912 & 0.7831 & +0.810 & 5/8 & 5 & KAN \\
+ & k4 & 0.7847 & 0.7831 & +0.163 & 5/8 & 5 & KAN \\
+ & k5 & 0.7829 & 0.7831 & -0.021 & 2/8 & 4 & MLP \\
+ & k6 & 0.7792 & 0.7831 & -0.385 & 1/8 & 5 & MLP \\
+ & k7 & 0.7789 & 0.7831 & -0.420 & 2/8 & 5 & MLP \\
+\bottomrule
+\end{tabular}}
+\end{table*}

@@ -1,0 +1,9 @@
+dataset	tasks	split	base_seed	folds	metric
+bbbp	1	scaffold	42	5	ROC-AUC
+tox21	12	scaffold	42	5	ROC-AUC
+toxcast	617	scaffold	42	5	ROC-AUC
+sider	27	scaffold	42	5	ROC-AUC
+clintox	2	scaffold	42	5	ROC-AUC
+bace	1	scaffold	42	5	ROC-AUC
+hiv	1	scaffold	42	5	ROC-AUC
+muv	17	scaffold	42	5	ROC-AUC

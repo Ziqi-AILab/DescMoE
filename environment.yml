@@ -1,0 +1,26 @@
+name: MoleSG
+channels:
+  - pyg
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pytorch=2.4.0
+  - pytorch-cuda=12.1
+  - pyg=2.5.3
+  - numpy=1.26.4
+  - pandas=2.3.3
+  - scipy=1.15.3
+  - scikit-learn=1.3.0
+  - rdkit=2022.09.5
+  - matplotlib=3.10
+  - pillow
+  - tqdm
+  - pip:
+      - transformers==4.31.0
+      - tokenizers==0.13.3
+      - python-pptx==1.0.2
+      - PyMuPDF==1.27.2.2
+      - pypdf==6.10.2

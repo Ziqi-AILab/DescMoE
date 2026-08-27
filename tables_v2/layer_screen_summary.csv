@@ -1,0 +1,4 @@
+placement,model,datasets,macro_auc,delta_vs_last,wins_vs_last
+last,p2_mofe_ffn_logp_last,8,0.7809884167,0.0000000000,0
+odd,p2_mofe_ffn_logp_odd,8,0.7753507554,-0.0056376613,2
+even,p2_mofe_ffn_logp_even,8,0.7729291441,-0.0080592726,2

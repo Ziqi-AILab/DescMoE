@@ -1,0 +1,11 @@
+partition,comparison,left_model,right_model,datasets,wilcoxon_statistic,p_value,p_holm
+TPSA,I1 vs Base,p3_tpsa_mofe_last_ffn_n8aligned,p3_base_vanilla_n8aligned,8,8.0,0.1953125,1.0
+TPSA,I2 conditional effect,p5_tpsa_mofe_last_selected_kan_n8aligned,p3_tpsa_mofe_last_ffn_n8aligned,8,18.0,1.0,1.0
+TPSA,I3 conditional effect,p3_tpsa_mofe_last_ffn_conloss_n8aligned,p3_tpsa_mofe_last_ffn_n8aligned,8,8.0,0.1953125,1.0
+TPSA,Full vs Base,p5_tpsa_mofe_last_selected_kan_conloss_n8aligned,p3_base_vanilla_n8aligned,8,4.0,0.0546875,0.4921875
+TPSA,selected-KAN vs all-KAN,p5_tpsa_mofe_last_selected_kan_n8aligned,p3_tpsa_mofe_last_all_kan_n8aligned,8,8.0,0.1953125,1.0
+MolLogP,I1 vs Base,p3_logp_mofe_last_ffn_n8aligned,p3_base_vanilla_n8aligned,8,6.0,0.109375,0.875
+MolLogP,I2 conditional effect,p5_logp_mofe_last_selected_kan_n8aligned,p3_logp_mofe_last_ffn_n8aligned,8,12.0,0.4609375,1.0
+MolLogP,I3 conditional effect,p3_logp_mofe_last_ffn_conloss_n8aligned,p3_logp_mofe_last_ffn_n8aligned,8,17.0,0.9453125,1.0
+MolLogP,Full vs Base,p5_logp_mofe_last_selected_kan_conloss_n8aligned,p3_base_vanilla_n8aligned,8,0.0,0.0078125,0.078125
+MolLogP,selected-KAN vs all-KAN,p5_logp_mofe_last_selected_kan_n8aligned,p3_logp_mofe_last_all_kan_n8aligned,8,8.0,0.1953125,1.0

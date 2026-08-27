@@ -1,0 +1,65 @@
+{
+  "rdkit_version": "2022.09.5",
+  "source_csv": "MoleSG/Data/zinc15/zinc15_250K.csv",
+  "assignment_file": "MoleSG/Data/zinc15/expert_ids.npz",
+  "preprocessed_directory": "MoleSG/Data/zinc15/zinc15_0.25_geo/preprocess",
+  "source_rows": 250000,
+  "valid_molecules": 250000,
+  "invalid_molecules": 0,
+  "tpsa_edges": [
+    20.0,
+    40.0,
+    60.0,
+    80.0,
+    100.0,
+    120.0,
+    140.0
+  ],
+  "logp_edges": [
+    -1.0,
+    0.0,
+    1.0,
+    2.0,
+    3.0,
+    4.0,
+    5.0
+  ],
+  "tpsa_assignment_mismatches": 0,
+  "logp_assignment_mismatches": 0,
+  "tpsa_counts": [
+    932,
+    17539,
+    59080,
+    66847,
+    53305,
+    34637,
+    14952,
+    2708
+  ],
+  "logp_counts": [
+    35681,
+    35759,
+    35986,
+    35968,
+    70922,
+    35683,
+    1,
+    0
+  ],
+  "tpsa_range": [
+    3.24,
+    214.43999999999997
+  ],
+  "logp_range": [
+    -4.819399999999999,
+    4.009500000000003
+  ],
+  "preprocessed_files": 250000,
+  "unique_preprocessed_indices": 250000,
+  "missing_preprocessed_indices": 0,
+  "unexpected_preprocessed_indices": 0,
+  "malformed_preprocessed_filenames": 0,
+  "illustrative_molecule": "Ibuprofen",
+  "illustrative_molecule_in_zinc250k": false,
+  "illustrative_molecule_source_rows": []
+}
