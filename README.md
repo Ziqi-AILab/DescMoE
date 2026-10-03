@@ -1,229 +1,157 @@
-# Descriptor-Guided Chemical Space Partitioning
+# paper101
 
-This repository accompanies the JCIM manuscript on descriptor-guided chemical
-space partitioning for molecular representation learning. The implementation
-uses fixed intervals of topological polar surface area (TPSA) or
-Wildman-Crippen MolLogP to assign each molecule to one computation branch in
-the final layer of an eight-layer graph Transformer. The branch functions can
-be multilayer perceptrons (MLPs), Kolmogorov-Arnold networks (KANs), or a
-descriptor-specific mixture of both. A descriptor-aware contrastive loss
-(ConLoss) is available during pretraining.
+Code and lightweight results for **Physicochemical Descriptors as Features,
+Auxiliary Targets, and Branch Selectors in Molecular Pretraining**.
 
-The repository contains the method implementation, experiment configurations,
-the full-coverage downstream evaluation entry point, canonical tables used by
-the development manuscript, and deterministic plotting scripts. Molecular
-datasets, model checkpoints, raw predictions, node embeddings, and scheduler
-logs are intentionally excluded because of their size or redistribution terms.
+The corrected comparison contains 16 neural configurations across eight
+classification datasets and five repeated scaffold splits (640 test runs).
+Five logistic-regression reference families contribute another 200 runs.
+TPSA and MolLogP are studied separately. The configurations include a dense
+backbone, descriptor concatenation, auxiliary prediction, fixed and quantile
+assignment, cross-stage stable random assignment, molecule-level learned
+routing, and ConLoss variants. Historical KAN and layer screens are SI material.
 
-## Repository structure
+## Check the reported statistics without a GPU
 
-```text
-MoleSG/
-  Data_process/                 ZINC15 graph preprocessing
-  pretrain/                     pretraining and branch implementations
-  Downstream/                   legacy and full-coverage finetuning entry points
-analysis/                       canonical aggregation and plotting scripts
-configs/                        model matrix and downstream task definitions
-tables_v2/                      canonical development-snapshot tables
-data/                           external data instructions
-checkpoints/                    external checkpoint layout
-raw_results/                    external raw-result layout
-EXPERIMENT_PARAMETERS.md        exact Layer Select, KAN Select, and ablation flags
-paper_v3.0_all_in_one.tex       manuscript and Supporting Information snapshot
+```bash
+python -m pip install -r requirements-analysis.txt
+python scripts/summarize_reported_results.py --check
 ```
 
-## Evidence status
+This rebuilds dataset means, sample SDs, macro ROC-AUC, paired contrasts, and
+10,000-iteration hierarchical bootstrap intervals from `results/corrected/`.
+Outputs go to `runs/rebuilt_tables/`. It does not download molecular data or
+run a model. Included CSV values retain their original precision.
 
-The included canonical downstream tables reproduce the historical development
-snapshot. All 440 planned eight-layer fold files were present, but the original
-validation and test loaders used `drop_last=True`. The historical values are
-therefore retained as development evidence rather than a corrected final
-benchmark. Layer placement and KAN allocation were also exploratory design
-steps in which test summaries were visible.
-
-`MoleSG/Downstream/train_graph_evalfix.py` implements the corrected protocol.
-Validation and test loaders are deterministic and use `drop_last=False`.
-Checkpoint selection uses the complete validation split. Final test evaluation
-is a separate mode and requires a frozen model-definition file. Corrected
-results are not included until that evaluation is complete.
-
-## Environment
-
-Create the supplied Conda environment:
+## Environment and external files
 
 ```bash
 conda env create -f environment.yml
 conda activate MoleSG
 ```
 
-The manuscript calculations use RDKit 2022.09.5. The environment also pins the
-PyTorch, PyTorch Geometric, NumPy, SciPy, scikit-learn, Transformers, and
-tokenizers versions used by the project.
+The source uses the MoleSG architecture. The supplied environment records
+the project versions, including RDKit 2022.09.5. CUDA training needs a compatible
+driver. GPU extension packages may need platform-specific installation.
 
-## Reproduce the included figures
+Datasets, processed caches, checkpoints, raw predictions, embeddings, images,
+and logs are **not distributed here**. See [data/README.md](data/README.md) for
+required file formats and [checkpoints/README.md](checkpoints/README.md) for
+checkpoint paths. Exact numerical training reproduction requires the original
+processed row order and pretraining cache, not an independently filtered
+MoleculeNet download. Obtain those external artifacts from the authors.
 
-The publication data figures can be regenerated from the included canonical
-CSV files without molecular datasets, checkpoints, or a GPU:
-
-```bash
-python analysis/plot_figures_v2.py
-```
-
-Outputs are written to `figures/`. Figure files are not tracked in this public
-repository. The canonical tables document the legacy development snapshot
-described above. The optional overview panel is skipped when its visual assets
-are absent. All quantitative result figures are still generated.
-
-The chemistry example in the overview figure can be independently checked with
-the same descriptor-assignment function used by the model:
+Set your own paths. `RUN` should be an empty directory for a new reproduction.
 
 ```bash
-python analysis/build_verified_overview_chemistry.py
+export ZINC_CSV=/path/to/zinc15_250K.csv
+export ZINC_CACHE=/path/to/zinc15_0.25_geo/preprocess
+export DOWNSTREAM_DATA=/path/to/Downstream/Data
+export RUN=/path/to/paper101_run
 ```
 
-This calculation verifies ibuprofen using RDKit 2022.09.5. Its TPSA is
-37.30 square angstroms and its MolLogP is 3.0732. Under the fixed project
-boundaries, these values enter zero-based TPSA region 1 and MolLogP region 5.
+## Reproduction sequence
 
-## External data
-
-The repository does not redistribute ZINC15 or MoleculeNet data. After obtaining
-the datasets under their original licenses, use this layout:
-
-```text
-MoleSG/Data/zinc15/zinc15_250K.csv
-MoleSG/Data/zinc15/expert_ids.npz
-MoleSG/Data/zinc15/zinc15_0.25_geo/preprocess/
-MoleSG/Downstream/Data/<dataset>/preprocess/<dataset>.pickle
-```
-
-The eight classification datasets are BBBP, Tox21, ToxCast, SIDER, ClinTox,
-BACE, HIV, and MUV. Details are in `data/README.md` and
-`configs/downstream_tasks.tsv`.
-
-## Descriptor assignment audit
-
-After external ZINC15 files are available, recompute TPSA and MolLogP for every
-source row and compare them with the stored branch assignments:
+### 1. Prepare assignment arrays on local CPU
 
 ```bash
-python analysis/audit_pretraining_descriptor_assignments.py
+python scripts/prepare_matched_control_assignments.py \
+  --zinc-csv "$ZINC_CSV" --downstream-data "$DOWNSTREAM_DATA" \
+  --output-dir "$RUN/control_data" \
+  --zinc-output "$RUN/control_data/descriptor_controls.npz"
 ```
 
-Set `MOLESG_ROOT` if the `MoleSG` directory is stored outside the repository:
+Statistics and score thresholds are fitted on ZINC15, then reused downstream.
+The canonical-SMILES random rule does not shuffle each downstream dataset.
+`configs/reported_descriptor_statistics.json` records the parameters used in
+the reported experiment for comparison. Do not refit boundaries on downstream
+labels or validation performance. Extra legacy and sparse-bin arrays produced
+by the original preparation code are not part of the final 16-model matrix.
+
+### 2. Pretrain each configuration
+
+The single source of model flags is `configs/final_model_matrix.tsv`.
+This example prints the command without executing it.
 
 ```bash
-MOLESG_ROOT=/path/to/MoleSG \
-python analysis/audit_pretraining_descriptor_assignments.py
+python scripts/run_model.py --phase pretrain \
+  --model p8_tpsa_stable_random_last --zinc-cache "$ZINC_CACHE" --run-root "$RUN"
 ```
 
-## Pretraining
+Run the same command with `--execute` **inside your Slurm GPU job**. The wrapper
+does not submit jobs or start a watcher. Request one GPU, activate the Conda
+environment, and set your cluster's partition, QoS and time in the job script.
+Pretraining uses 300 epochs, batch size 32 and seed 42. Existing completed
+pretraining checkpoints can instead be supplied with `--pretrain-root`.
+No model downloads occur in the training wrapper.
 
-All main models use eight graph Transformer layers, eight attention heads, a
-hidden dimension of 256, and 300 pretraining epochs. TPSA boundaries are 20,
-40, 60, 80, 100, 120, and 140 square angstroms. MolLogP boundaries are -1, 0,
-1, 2, 3, 4, and 5.
+The original resume implementation is retained, but it does not save optimizer
+state or all decoder states. It is not exact trajectory restoration. Do not
+describe restarting from these component weights as an exact resumed run.
 
-Example for the final-layer TPSA all-MLP model:
+### 3. Finetune using complete validation splits
 
 ```bash
-cd MoleSG/pretrain
-python train_total.py \
-  --gpu 0 \
-  --seed 42 \
-  --epochs 300 \
-  --experiment_name p3_tpsa_mofe_last_ffn \
-  --use_prior_moe \
-  --num_experts 8 \
-  --expert_property tpsa \
-  --expert_type ffn \
-  --moe_layer_mode last
+python scripts/run_model.py --phase finetune \
+  --model p8_tpsa_stable_random_last --dataset bbbp \
+  --downstream-data "$DOWNSTREAM_DATA" --run-root "$RUN"
 ```
 
-For the TPSA selected-KAN model, use `--expert_type mixed` and
-`--kan_expert_indices 0,1,2,3,5`. For MolLogP, use
-`--kan_expert_indices 1,2,3,4`. Add the following flags for ConLoss:
+Repeat for all 16 configurations and `bbbp,tox21,toxcast,sider,clintox,bace,hiv,muv`.
+Each command runs five seeds, 42 to 46, when executed in a GPU job. The runner
+uses the eight-layer backbone, complete deterministic validation, patience 20,
+and no test evaluation. It saves validation predictions and the best checkpoint.
+See [EXPERIMENT_PARAMETERS.md](EXPERIMENT_PARAMETERS.md) for all flags and
+the distinction between pretraining and downstream losses.
+
+### 4. Freeze the complete panel, then evaluate test once
 
 ```bash
---use_contrastive_expert_loss \
---contrastive_coff 0.1 \
---contrastive_temperature 0.1
+python scripts/freeze_panel.py --run-root "$RUN"
+python scripts/run_model.py --phase final_test \
+  --model p8_tpsa_stable_random_last --dataset bbbp \
+  --downstream-data "$DOWNSTREAM_DATA" --run-root "$RUN"
 ```
 
-All parameter changes and checkpoint names are listed in
-`EXPERIMENT_PARAMETERS.md` and `configs/model_matrix.tsv`.
+Freezing is a local CPU check of all 640 validation outputs and checkpoint
+paths. It does not select models by test performance. Submit each final-test
+command as a GPU job with `--execute`. Final test requires the run-specific
+frozen definition. Existing test outputs are not overwritten by the wrapper.
 
-## Corrected downstream finetuning
-
-The corrected entry point separates validation-based checkpoint selection from
-final test evaluation. A typical finetuning command is:
+### 5. CPU baselines and aggregation
 
 ```bash
-cd MoleSG/Downstream
-python train_graph_evalfix.py \
-  --mode finetune \
-  --dataset bbbp \
-  --seed 42 \
-  --fold 5 \
-  --experiment_name p3_tpsa_mofe_last_ffn_n8_evalfix \
-  --pretrained_ckpt_path ../pretrain/Model/p3_tpsa_mofe_last_ffn/compt/periodic_latest.pth \
-  --backbone_profile pretrain_aligned \
-  --encoder_layers_override 8 \
-  --strict_backbone_load \
-  --use_prior_moe \
-  --num_experts 8 \
-  --expert_property tpsa \
-  --expert_type ffn \
-  --moe_layer_mode last
+python scripts/run_cpu_descriptor_ecfp_baselines.py \
+  --data-root "$DOWNSTREAM_DATA" --output-root "$RUN/cpu_baselines"
+python analysis/build_p0_corrected_panel.py \
+  --lock "$RUN/model_definition_frozen.json" --result-root "$RUN/results" \
+  --cpu-folds "$RUN/cpu_baselines/cpu_baseline_fold_auc.csv" \
+  --output-dir "$RUN/summary"
 ```
 
-The model-specific flags must match pretraining exactly. Five scaffold runs use
-seeds 42 through 46. The corrected runner stores stable sample identifiers and
-checks that every validation or test row is evaluated exactly once.
+CPU baselines use the same scaffold implementation. Their regularization is
+selected using validation only. Aggregation reads completed predictions,
+checks sample-ID coverage, and rebuilds the final statistics.
 
-Final test evaluation is intentionally guarded. It should be run only after the
-model definition has been frozen and the corrected checkpoint has been selected
-using full validation. See `EXPERIMENT_PARAMETERS.md` for the complete protocol.
-
-## Rebuild canonical tables from external raw artifacts
-
-The included tables are sufficient to reproduce the supplied figures. To
-rebuild them from raw predictions, embeddings, and pretraining logs, provide the
-external paths through environment variables:
+## Code checks and paper correspondence
 
 ```bash
-PAPER101_PROJECT_ROOT=/path/to/paper_101 \
-MOLESG_ROOT=/path/to/MoleSG \
-MOLESG_RESULT_ROOT=/path/to/MoleSG/Downstream/Result \
-python analysis/build_analysis_v2.py
-```
-
-Embedding analysis uses the same `MOLESG_RESULT_ROOT` variable:
-
-```bash
-MOLESG_RESULT_ROOT=/path/to/MoleSG/Downstream/Result \
-python analysis/analyze_embeddings_v2.py
-```
-
-Raw artifact layouts are documented in `raw_results/README.md` and
-`checkpoints/README.md`.
-
-## Lightweight checks
-
-Run the repository checks with:
-
-```bash
-python -m compileall -q MoleSG analysis tests
+python scripts/check_repository.py
 python tests/test_descriptor_assignment.py
 python tests/test_model_components.py
-python scripts/check_repository.py
+python tests/test_p8_control_invariants.py
+python tests/test_final_architecture_loads.py
+python tests/test_release_workflow.py
+python tests/test_command_entrypoints.py
 ```
 
-The checks do not download data or run GPU training.
+These are CPU tests, not full training reproductions. The method-to-function
+map is in [docs/METHOD_CODE_MAP.md](docs/METHOD_CODE_MAP.md).
+The release checks and their limits are recorded in [TEST_REPORT.md](TEST_REPORT.md).
 
-## Manuscript correspondence
-
-The mapping between model names, ablation roles, descriptors, branch functions,
-and checkpoint paths is in `configs/model_matrix.tsv`. Metric definitions are in
-`tables_v2/metric_definitions.csv`. The figure and table source mapping is in
-`docs/figure_table_manifest.csv`.
+`tables_v2/`, `configs/model_matrix.tsv`, the old manuscript snapshot and the
+older plotting scripts are **legacy development material**, not the corrected
+main benchmark. They remain available for historical SI context. Use
+`results/corrected/` and `configs/final_model_matrix.tsv` for the current panel.
+The code package contains no figure files. The methods revision is delivered
+separately and does not silently replace the old manuscript snapshot.

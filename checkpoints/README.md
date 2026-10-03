@@ -1,23 +1,21 @@
-# External Checkpoints
+# External checkpoints
 
-Pretraining and downstream checkpoints are excluded because of their size.
-The expected pretraining layout is:
-
-```text
-MoleSG/pretrain/Model/<experiment_name>/compt/periodic_latest.pth
-MoleSG/pretrain/Model/<experiment_name>/smiles_encoder/periodic_latest.pth
-MoleSG/pretrain/Model/<experiment_name>/total_encoder/periodic_latest.pth
-```
-
-Experiment names and changed flags are listed in
-`EXPERIMENT_PARAMETERS.md`.
-
-Corrected downstream checkpoints are written outside version control, for
-example:
+Weights are not included. Provide completed weights from the authors or train
+using the final model matrix. With `RUN` as your reproduction directory:
 
 ```text
-MoleSG/Downstream/Model_evalfix/<dataset>/<experiment>/fold_<fold>/best_model.pth
+RUN/pretrain/<model>/compt/periodic_latest.pth
+RUN/pretrain/<model>/smiles_encoder/periodic_latest.pth
+RUN/pretrain/<model>/total_encoder/periodic_latest.pth
+RUN/finetuned/<dataset>/best_model_<result_exp>_<dataset>_fold_<1-5>.pt
 ```
 
-Do not commit checkpoint files. The model matrix records the expected
-pretraining checkpoint name for every manuscript configuration.
+The graph checkpoint at zero-based epoch 299 is used for downstream transfer.
+Only `compt/periodic_latest.pth` is needed for finetuning. The other component
+weights are pretraining outputs, not downstream inputs. The legacy resume path
+does not restore optimizer or decoder states and is not exact resume.
+
+For existing weights elsewhere, supply `--pretrain-root /path/to/Model` to
+`scripts/run_model.py`. Corrected finetuned checkpoints must be selected using
+complete validation splits. Old incomplete-batch best checkpoints are not
+accepted as corrected final-test checkpoints.

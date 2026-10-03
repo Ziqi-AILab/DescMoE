@@ -12,7 +12,7 @@ REQUIRED = [
     "README.md",
     "EXPERIMENT_PARAMETERS.md",
     "environment.yml",
-    "configs/model_matrix.tsv",
+    "configs/final_model_matrix.tsv",
     "configs/downstream_tasks.tsv",
     "MoleSG/pretrain/train_total.py",
     "MoleSG/pretrain/prior_moe.py",
@@ -20,13 +20,16 @@ REQUIRED = [
     "MoleSG/Downstream/train_graph.py",
     "MoleSG/Downstream/train_graph_evalfix.py",
     "MoleSG/Downstream/dataset_graph.py",
-    "analysis/plot_figures_v2.py",
-    "paper_v3.0_all_in_one.tex",
-    "references.bib",
-    "tables_v2/results_long.csv",
-    "tables_v2/metric_definitions.csv",
+    "MoleSG/Data_process/stable_random_assignment.py",
+    "scripts/run_model.py",
+    "scripts/freeze_panel.py",
+    "scripts/summarize_reported_results.py",
+    "results/corrected/corrected_fold_auc.csv",
+    "results/corrected/cpu_baseline_fold_auc.csv",
+    "docs/METHOD_CODE_MAP.md",
 ]
-EXCLUDED_SUFFIXES = {".pth", ".pt", ".ckpt", ".pickle", ".pkl", ".npz"}
+EXCLUDED_SUFFIXES = {".pth", ".pt", ".ckpt", ".pickle", ".pkl", ".npz",
+                     ".npy", ".safetensors", ".png", ".jpg", ".pdf", ".pptx", ".svg"}
 PERSONAL_PATH = re.compile("/gpfs/work/che/" + "ziqiwang21|/home/" + "sa/")
 
 
@@ -39,7 +42,7 @@ def main() -> None:
     excluded = []
     personal_paths = []
     for path in ROOT.rglob("*"):
-        if not path.is_file() or ".git" in path.parts:
+        if not path.is_file() or ".git" in path.parts or "runs" in path.relative_to(ROOT).parts:
             continue
         relative = path.relative_to(ROOT)
         if path.suffix.lower() in EXCLUDED_SUFFIXES:

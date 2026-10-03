@@ -46,3 +46,23 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+
+# Corrected-panel runs and external resources
+/runs/
+/control_data*/
+/external_data/
+*.npy
+*.h5
+*.hdf5
+*.safetensors
+*.bin
+*.zip
+*.tar*
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.svg
+*.pptx
+*.tiff
+*.tif

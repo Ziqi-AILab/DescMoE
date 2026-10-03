@@ -20,7 +20,10 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
                moe_layer_mode='all', moe_layer_indices=None,
                moe_d_ff=0,
                # ---- Standard MoE flags ----
-               use_standard_moe=False, moe_top_k=2, moe_aux_loss_coeff=0.01):
+               use_standard_moe=False, moe_top_k=2, moe_aux_loss_coeff=0.01,
+               router_granularity='token',
+               # ---- Matched descriptor-use controls ----
+               descriptor_use='none'):
     """Helper: Construct a model from hyper-parameters."""
     c = copy.deepcopy
     attn = MultiHeadedAttention(h, d_model, leaky_relu_slope, dropout, attenuation_lambda, distance_matrix_kernel)
@@ -28,6 +31,11 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
 
     def build_dense_ff():
         return PositionwiseFeedForward(d_model, N_dense, dropout, leaky_relu_slope, dense_output_nonlinearity)
+
+    def build_descriptor_ff():
+        return DescriptorConditionedFeedForward(
+            d_model, N_dense, dropout, leaky_relu_slope,
+            dense_output_nonlinearity)
 
     def build_moe_ff():
         if use_standard_moe:
@@ -37,7 +45,8 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
             return StandardMoEFFN(d_model=d_model, d_ff=moe_d_ff if moe_d_ff > 0 else d_model,
                                   activation='mish', dropout=dropout, d_out=d_model,
                                   num_experts=num_experts, top_k=moe_top_k,
-                                  aux_loss_coeff=moe_aux_loss_coeff)
+                                  aux_loss_coeff=moe_aux_loss_coeff,
+                                  routing_granularity=router_granularity)
         if use_prior_moe:
             import sys, os
             sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'pretrain'))
@@ -52,7 +61,10 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
     use_moe = use_standard_moe or use_prior_moe
     encoder_layers = []
     for layer_idx in range(N):
-        ff = build_moe_ff() if use_moe and layer_idx in moe_layer_set else build_dense_ff()
+        if descriptor_use == 'concat' and layer_idx == N - 1:
+            ff = build_descriptor_ff()
+        else:
+            ff = build_moe_ff() if use_moe and layer_idx in moe_layer_set else build_dense_ff()
         encoder_layers.append(EncoderLayer(d_model, c(attn), ff, dropout, scale_norm))
 
     model = GraphTransformer(
@@ -61,7 +73,9 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
         Edge_Embeddings(d_edge, d_model, dropout),
         Position_Encoding(max_length, d_model, dropout),
         Generator(d_model, n_output, n_generator_layers, leaky_relu_slope, dropout, scale_norm, aggregation_type),
-        use_prior_moe=use_prior_moe
+        use_prior_moe=use_prior_moe,
+        descriptor_use=descriptor_use,
+        d_model=d_model,
     )
 
     # This was important from their code. Initialize parameters with Glorot / fan_avg.
@@ -79,7 +93,8 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
 
 
 class GraphTransformer(nn.Module):
-    def __init__(self, encoder, node_embed, edge_embed, pos_embed, generator, use_prior_moe=False):
+    def __init__(self, encoder, node_embed, edge_embed, pos_embed, generator,
+                 use_prior_moe=False, descriptor_use='none', d_model=256):
         super(GraphTransformer, self).__init__()
         self.encoder = encoder
         self.node_embed = node_embed
@@ -87,18 +102,33 @@ class GraphTransformer(nn.Module):
         self.pos_embed = pos_embed
         self.generator = generator
         self.use_prior_moe = use_prior_moe
-    def forward(self, node_features, node_mask, adj_matrix, edge_features, expert_ids=None):
+        self.descriptor_use = descriptor_use
+        self.descriptor_head = (
+            nn.Linear(d_model, 1) if descriptor_use == 'auxiliary' else None)
+        self.descriptor_prediction = None
+    def forward(self, node_features, node_mask, adj_matrix, edge_features,
+                expert_ids=None, descriptor_values=None):
         """Take in and process masked src and target sequences."""
-        return self.predict(self.encode(node_features, edge_features, adj_matrix, node_mask, expert_ids=expert_ids), node_mask)
+        encoded = self.encode(
+            node_features, edge_features, adj_matrix, node_mask,
+            expert_ids=expert_ids, descriptor_values=descriptor_values)
+        if self.descriptor_head is not None:
+            mask = node_mask.unsqueeze(-1).float()
+            pooled = (encoded * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+            self.descriptor_prediction = self.descriptor_head(pooled).squeeze(-1)
+        return self.predict(encoded, node_mask)
 
-    def encode(self, node_features, edge_features, adj_matrix, node_mask, expert_ids=None):  # (batch, max_length, d_atom+1)
+    def encode(self, node_features, edge_features, adj_matrix, node_mask,
+               expert_ids=None, descriptor_values=None):  # (batch, max_length, d_atom+1)
         # xv.shape = (batch, max_length, d_model)
         node_initial = self.node_embed(node_features[:, :, :-1]) + self.pos_embed(node_features[:, :, -1].squeeze(-1).long())
         # node_initial = self.node_embed(node_features[:, :, :-1])
         # evw = xv + evw for directions; evw.shape = (batch, max_length, max_length, d_model)
         # edge_initial = node_initial.unsqueeze(-2) + self.edge_embed(edge_features)
         edge_initial = self.edge_embed(edge_features)
-        return self.encoder(node_initial, edge_initial, adj_matrix, node_mask, expert_ids=expert_ids)
+        return self.encoder(
+            node_initial, edge_initial, adj_matrix, node_mask,
+            expert_ids=expert_ids, descriptor_values=descriptor_values)
 
     def predict(self, out, out_mask):
         return self.generator(out, out_mask)
@@ -273,10 +303,13 @@ class Encoder(nn.Module):
             self.layers = clones(layer, N)
         self.norm = ScaleNorm(self.layers[0].size) if scale_norm else LayerNorm(self.layers[0].size)
 
-    def forward(self, node_hidden, edge_hidden, adj_matrix, mask, expert_ids=None):
+    def forward(self, node_hidden, edge_hidden, adj_matrix, mask, expert_ids=None,
+                descriptor_values=None):
         """Pass the input (and mask) through each layer in turn."""
         for layer in self.layers:
-            node_hidden, edge_hidden = layer(node_hidden, edge_hidden, adj_matrix, mask, expert_ids=expert_ids)
+            node_hidden, edge_hidden = layer(
+                node_hidden, edge_hidden, adj_matrix, mask,
+                expert_ids=expert_ids, descriptor_values=descriptor_values)
         return self.norm(node_hidden)
 
 
@@ -292,8 +325,12 @@ class EncoderLayer(nn.Module):
         self.norm = ScaleNorm(size) if scale_norm else LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
         self._is_moe = hasattr(feed_forward, 'num_experts')
+        self._uses_descriptor = getattr(feed_forward, 'uses_descriptor', False)
+        self._uses_molecule_router = (
+            getattr(feed_forward, 'routing_granularity', None) == 'molecule')
 
-    def forward(self, node_hidden, edge_hidden, adj_matrix, mask, expert_ids=None):
+    def forward(self, node_hidden, edge_hidden, adj_matrix, mask, expert_ids=None,
+                descriptor_values=None):
         """Follow Figure 1 (left) for connections."""
         # x.shape = (batch, max_length, d_atom)
         node_hidden = self.dropout(self.norm(node_hidden))
@@ -301,7 +338,15 @@ class EncoderLayer(nn.Module):
         # the first residue block
         node_hidden_first = node_hidden + self.dropout(self.norm(node_hidden_first))
         # ---- MoFE: pass expert_ids to MoE FFN, else vanilla FFN ----
-        if self._is_moe and expert_ids is not None:
+        if self._uses_descriptor:
+            if descriptor_values is None:
+                raise ValueError('descriptor_values are required for descriptor concatenation')
+            node_hidden_second = self.feed_forward(
+                node_hidden_first, descriptor_values=descriptor_values)
+        elif self._uses_molecule_router:
+            node_hidden_second = self.feed_forward(
+                node_hidden_first, node_mask=mask)
+        elif self._is_moe and expert_ids is not None:
             node_hidden_second = self.feed_forward(node_hidden_first, expert_ids=expert_ids)
         else:
             node_hidden_second = self.feed_forward(node_hidden_first)
@@ -359,6 +404,44 @@ class PositionwiseFeedForward(nn.Module):
             node_hidden = self.dropout[i](mish_function(self.linears[i](node_hidden)))
 
         return self.dropout[-1](self.dense_output_nonlinearity(self.linears[-1](node_hidden)))
+
+
+class DescriptorConditionedFeedForward(nn.Module):
+    """Shared FFN receiving one standardized descriptor coordinate."""
+
+    uses_descriptor = True
+
+    def __init__(self, d_model, N_dense, dropout=0.1, leaky_relu_slope=0.1,
+                 dense_output_nonlinearity='relu'):
+        super().__init__()
+        if N_dense != 2:
+            raise ValueError('descriptor concatenation requires N_dense=2')
+        self.input = nn.Linear(d_model + 1, d_model)
+        self.output = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(dropout)
+        self.leaky_relu_slope = leaky_relu_slope
+        self.output_nonlinearity = dense_output_nonlinearity
+
+    def forward(self, node_hidden, descriptor_values):
+        descriptor = descriptor_values.reshape(-1, 1, 1).to(
+            device=node_hidden.device, dtype=node_hidden.dtype)
+        descriptor = descriptor.expand(-1, node_hidden.size(1), 1)
+        hidden = self.dropout(mish_function(self.input(
+            torch.cat([node_hidden, descriptor], dim=-1))))
+        output = self.output(hidden)
+        if self.output_nonlinearity == 'relu':
+            output = F.leaky_relu(output, negative_slope=self.leaky_relu_slope)
+        elif self.output_nonlinearity == 'tanh':
+            output = torch.tanh(output)
+        elif self.output_nonlinearity == 'gelu':
+            output = F.gelu(output)
+        elif self.output_nonlinearity == 'swish':
+            output = output * torch.sigmoid(output)
+        elif self.output_nonlinearity == 'mish':
+            output = mish_function(output)
+        elif self.output_nonlinearity != 'none':
+            raise ValueError(f'Unknown dense output nonlinearity: {self.output_nonlinearity}')
+        return self.dropout(output)
 
 
 def clones(module, N):

@@ -8,7 +8,8 @@ from tqdm import tqdm
 
 class Zinc_data(Dataset):
     def __init__(self, data_root='../Data/zinc15/zinc15_0.25_geo/preprocess',
-                 expert_ids_path=None, expert_property='tpsa'):
+                 expert_ids_path=None, expert_property='tpsa',
+                 descriptor_values_path=None, descriptor_property='tpsa'):
         self.root = os.listdir(data_root)
         self.base_root = data_root
         # Load pre-computed expert ids if provided
@@ -17,6 +18,16 @@ class Zinc_data(Dataset):
             data = np.load(expert_ids_path)
             if expert_property in data:
                 self.expert_ids = data[expert_property]
+            else:
+                raise KeyError(
+                    f'{expert_property} is absent from {expert_ids_path}')
+        self.descriptor_values = None
+        if descriptor_values_path and os.path.exists(descriptor_values_path):
+            data = np.load(descriptor_values_path)
+            key = f'{descriptor_property}_standardized'
+            if key not in data:
+                raise KeyError(f'{key} is absent from {descriptor_values_path}')
+            self.descriptor_values = data[key]
     def __len__(self):
         return len(self.root)
 
@@ -37,11 +48,20 @@ class Zinc_data(Dataset):
 
         # Extract molecule index from filename for expert_id lookup
         mol_expert_id = np.array([0], dtype=np.int64)
+        descriptor_value = np.array([0.0], dtype=np.float32)
+        mol_idx = None
         if self.expert_ids is not None:
             fname = self.root[index]  # e.g. processed_geometric_mol123.npz
             mol_idx = int(fname.split('mol')[1].split('.')[0])
             if mol_idx < len(self.expert_ids):
                 mol_expert_id = np.array([self.expert_ids[mol_idx]], dtype=np.int64)
+        if self.descriptor_values is not None:
+            if mol_idx is None:
+                fname = self.root[index]
+                mol_idx = int(fname.split('mol')[1].split('.')[0])
+            if mol_idx < len(self.descriptor_values):
+                descriptor_value = np.array(
+                    [self.descriptor_values[mol_idx]], dtype=np.float32)
 
         node_features = torch.from_numpy(node_features)
         bond_features = torch.from_numpy(bond_features)
@@ -55,11 +75,12 @@ class Zinc_data(Dataset):
         num_atoms = torch.from_numpy(num_atoms)
         x = torch.from_numpy(x)
         mol_expert_id = torch.from_numpy(mol_expert_id)
+        descriptor_value = torch.from_numpy(descriptor_value)
 
 
 
 
-        return node_features, bond_features, adjacency_matrix, mask_node_labels, masked_atom_indices, token_ids, labels, edge_attr, edge_index, num_atoms, x, mol_expert_id
+        return node_features, bond_features, adjacency_matrix, mask_node_labels, masked_atom_indices, token_ids, labels, edge_attr, edge_index, num_atoms, x, mol_expert_id, descriptor_value
 
 
 def mol_collate_func_mask(batch):
@@ -67,6 +88,7 @@ def mol_collate_func_mask(batch):
     # labels = []
     edge_attr_list, edge_index_list, x_list, xmasked_atom_indices_list,num_nodes_list= [], [], [], [],[]
     expert_id_list = []
+    descriptor_value_list = []
     cumsum_node = 0
     for molecule in batch:
         a = molecule[8] + cumsum_node
@@ -86,6 +108,7 @@ def mol_collate_func_mask(batch):
         xmasked_atom_indices_list.append(b)
         num_nodes_list.append(c)
         expert_id_list.append(molecule[11])
+        descriptor_value_list.append(molecule[12])
 
 
 
@@ -93,7 +116,7 @@ def mol_collate_func_mask(batch):
         # labels.append(molecule.label)
 
 
-    return torch.stack(node_features_list), torch.stack(bond_features_list), torch.stack(adjacency_list), mask_node_labels_list, masked_atom_indices_list, torch.stack(token_ids_list), torch.stack(labels_list), torch.cat(edge_attr_list,0), torch.cat(edge_index_list,-1), torch.cat(x_list,0), torch.cat(xmasked_atom_indices_list,0), torch.cat(mask_node_labels_list,0), torch.cat(num_nodes_list,0), torch.cat(expert_id_list, 0)
+    return torch.stack(node_features_list), torch.stack(bond_features_list), torch.stack(adjacency_list), mask_node_labels_list, masked_atom_indices_list, torch.stack(token_ids_list), torch.stack(labels_list), torch.cat(edge_attr_list,0), torch.cat(edge_index_list,-1), torch.cat(x_list,0), torch.cat(xmasked_atom_indices_list,0), torch.cat(mask_node_labels_list,0), torch.cat(num_nodes_list,0), torch.cat(expert_id_list, 0), torch.cat(descriptor_value_list, 0)
 
 
 

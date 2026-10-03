@@ -1,6 +1,6 @@
 import argparse
+import json
 import os
-import sys
 import time
 from pathlib import Path
 import torch
@@ -13,10 +13,6 @@ from torch.utils.data import DataLoader
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 # from dataset_node_zinc import construct_dataset_mask, mol_collate_func_mask
-MOLESG_ROOT = Path(__file__).resolve().parents[1]
-if str(MOLESG_ROOT) not in sys.path:
-    sys.path.insert(0, str(MOLESG_ROOT))
-
 from transformer_graph import make_model
 from utils import ScheduledOptim, get_options
 # from graph_mae_model import GNNDecoder
@@ -53,7 +49,11 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
                 use_contrastive_expert_loss=False, contrastive_coff=0.1, contrastive_temperature=0.1,
                 start_epoch=0,
                 # ---- Standard MoE flag ----
-                use_standard_moe=False):
+                use_standard_moe=False,
+                descriptor_use='none', descriptor_aux_coeff=0.1,
+                control_metadata=None,
+                periodic_checkpoint_every=50,
+                overwrite_best_checkpoint=False, model_output_root='./Model'):
 
     num_workers = int(os.environ.get("PRETRAIN_NUM_WORKERS", "4"))
     pin_memory = os.environ.get("PRETRAIN_PIN_MEMORY", "1") != "0"
@@ -82,12 +82,9 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
     best_valid_loss = float('inf')
     loss_accum=0
 
-    if not Path("./Model/" + experiment_name + "/compt/").exists():
-        os.makedirs("./Model/" + experiment_name + "/compt/")
-    if not Path("./Model/" + experiment_name + "/smiles_encoder/").exists():
-        os.makedirs("./Model/" + experiment_name + "/smiles_encoder/")
-    if not Path("./Model/" + experiment_name + "/total_encoder/").exists():
-        os.makedirs("./Model/" + experiment_name + "/total_encoder/")
+    model_dir = Path(model_output_root) / experiment_name
+    for component in ('compt', 'smiles_encoder', 'total_encoder'):
+        (model_dir / component).mkdir(parents=True, exist_ok=True)
 
 
     epoch_times = []
@@ -103,7 +100,7 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
         encoder_model.train()
         smiles_decoder_model.train()
 
-        for node_features, bond_features, adjacency_matrix, mask_node_labels, masked_atom_indices, token_ids, labels, edge_attr, edge_index, x, xmasked_atom_indices, xmask_node_labels, num_nodes, batch_expert_ids in tqdm(train_loader):
+        for node_features, bond_features, adjacency_matrix, mask_node_labels, masked_atom_indices, token_ids, labels, edge_attr, edge_index, x, xmasked_atom_indices, xmask_node_labels, num_nodes, batch_expert_ids, batch_descriptor_values in tqdm(train_loader):
 
             adjacency_matrix = adjacency_matrix.to(train_params['device'])  # (batch_size, max_length, max_length)
             node_features = node_features.to(train_params['device'])  # (batch_size, max_length, d_node)
@@ -118,6 +115,7 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
             xmasked_atom_indices = xmasked_atom_indices.to(train_params['device'])
             xmask_node_labels =xmask_node_labels.to(train_params['device'])
             num_nodes =num_nodes.to(train_params['device'])
+            batch_descriptor_values = batch_descriptor_values.to(train_params['device'])
 
             batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0   # (batch_size, max_length)
 
@@ -127,7 +125,11 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
                 mol_expert_ids = batch_expert_ids.to(train_params['device'])
 
             # (batch_size, max_length, 1)
-            node_new_feature = model(node_features, batch_mask, adjacency_matrix, bond_features, expert_ids=mol_expert_ids)
+            node_new_feature = model(
+                node_features, batch_mask, adjacency_matrix, bond_features,
+                expert_ids=mol_expert_ids,
+                descriptor_values=(
+                    batch_descriptor_values if descriptor_use == 'concat' else None))
             graph_features = node_new_feature + nn.Parameter(torch.zeros(1, 1, 256)).cuda()
             token_ids = token_ids.squeeze()
 
@@ -145,6 +147,14 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
             prediction_scores = smiles_decoder_model(total_embedding[:,26:,:])
             masked_lm_loss = loss_fct(prediction_scores.view(-1, 700), labels.long().view(-1))
             loss = loss_graph + masked_lm_loss
+
+            if descriptor_use == 'auxiliary':
+                if model.descriptor_prediction is None:
+                    raise RuntimeError('Auxiliary descriptor head did not produce a prediction')
+                descriptor_loss = F.mse_loss(
+                    model.descriptor_prediction,
+                    batch_descriptor_values.to(model.descriptor_prediction.dtype))
+                loss = loss + descriptor_aux_coeff * descriptor_loss
 
             # ---- MoFE: contrastive expert loss ----
             if use_contrastive_expert_loss and mol_expert_ids is not None:
@@ -222,23 +232,33 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
 
         # save the model and valid result
         if loss < best_valid_loss:
+            checkpoint_name = ("best_latest.pth" if overwrite_best_checkpoint
+                               else "compt_epoch{}.pth".format(epoch))
+            smiles_name = ("best_latest.pth" if overwrite_best_checkpoint
+                           else "smiles_encoder_epoch{}.pth".format(epoch))
+            encoder_name = ("best_latest.pth" if overwrite_best_checkpoint
+                            else "total_encoder_epoch{}.pth".format(epoch))
             torch.save({'state_dict': model.state_dict(),
-                        'best_epoch': epoch, 'best_valid_loss': best_valid_loss},
-                       "./Model/"+experiment_name+ "/compt/compt_epoch{}.pth".format(epoch),)
+                        'best_epoch': epoch, 'best_valid_loss': best_valid_loss,
+                        'control_metadata': control_metadata or {}},
+                       model_dir / "compt" / checkpoint_name)
             torch.save({'state_dict': smiles_encoder_model.state_dict(),
                         'best_epoch': epoch, 'best_valid_loss': best_valid_loss},
-                       "./Model/"+ experiment_name+ "/smiles_encoder/smiles_encoder_epoch{}.pth".format(epoch),)
+                       model_dir / "smiles_encoder" / smiles_name)
             torch.save({'state_dict': encoder_model.state_dict(),
                         'best_epoch': epoch, 'best_valid_loss': best_valid_loss},
-                       "./Model/" + experiment_name + "/total_encoder/total_encoder_epoch{}.pth".format(epoch),)
+                       model_dir / "total_encoder" / encoder_name)
             best_valid_loss = loss
 
-        # Periodic checkpoint every 50 epochs (overwrite to save space)
-        if (epoch + 1) % 50 == 0:
+        # Overwrite the periodic checkpoint so resume safety does not grow storage.
+        if (periodic_checkpoint_every > 0
+                and (epoch + 1) % periodic_checkpoint_every == 0):
             for subdir, obj in [("compt", model), ("smiles_encoder", smiles_encoder_model), ("total_encoder", encoder_model)]:
                 torch.save({'state_dict': obj.state_dict(),
-                            'epoch': epoch, 'loss': loss},
-                           "./Model/{}/{}/periodic_latest.pth".format(experiment_name, subdir))
+                            'epoch': epoch, 'loss': loss,
+                            'control_metadata': (
+                                control_metadata or {} if subdir == 'compt' else {})},
+                           model_dir / subdir / "periodic_latest.pth")
             print("  Periodic checkpoint saved at epoch {}".format(epoch + 1))
 
         # temp test
@@ -312,6 +332,8 @@ if __name__ == '__main__':
     parser.add_argument("--element", type=str, help="1H/13C", default='1H')
     parser.add_argument("--epochs", type=int, help="epochs", default=300)
     parser.add_argument("--experiment_name", type=str, help="experiment_name", default='')
+    parser.add_argument("--data_root", default='../Data/zinc15/zinc15_0.25_geo/preprocess')
+    parser.add_argument("--model_output_root", default='./Model')
     # ---- MoFE flags ----
     parser.add_argument("--use_prior_moe", action='store_true', default=False,
                         help="Replace Graph Transformer FFN with PriorMoEFFN")
@@ -341,10 +363,30 @@ if __name__ == '__main__':
                         help="Number of experts activated per token in standard MoE")
     parser.add_argument("--moe_aux_loss_coeff", type=float, default=0.01,
                         help="Load-balancing auxiliary loss coefficient for standard MoE")
+    parser.add_argument("--router_granularity", choices=["token", "molecule"],
+                        default="token",
+                        help="Entity used by the learned MoE router")
+    parser.add_argument("--descriptor_use", choices=['none', 'concat', 'auxiliary'],
+                        default='none')
+    parser.add_argument("--descriptor_aux_coeff", type=float, default=0.1)
+    parser.add_argument("--descriptor_values_path", type=str,
+                        default='../Data/zinc15/descriptor_controls.npz')
+    parser.add_argument("--expert_ids_path", type=str,
+                        default='../Data/zinc15/expert_ids.npz')
+    parser.add_argument("--expert_assignment_key", type=str, default=None)
+    parser.add_argument("--assignment_scheme", type=str, default='fixed',
+                        choices=['fixed', 'quantile', 'occupancy_random',
+                                 'stable_random', 'merge_tail',
+                                 'min_occupancy', 'learned'])
+    parser.add_argument("--bucket_edges_file", type=str, default=None)
     parser.add_argument("--resume_from", type=str, default=None,
                         help="Path prefix to resume from, e.g. ./Model/exp/  (loads compt, smiles_encoder, total_encoder)")
     parser.add_argument("--start_epoch", type=int, default=0,
                         help="Epoch to resume from (skips first start_epoch epochs)")
+    parser.add_argument("--periodic_checkpoint_every", type=int, default=50,
+                        help="Overwrite periodic_latest.pth every N epochs; 0 disables it")
+    parser.add_argument("--overwrite_best_checkpoint", action="store_true",
+                        help="Overwrite one best_latest.pth per component instead of saving every improving epoch")
     args = parser.parse_args()
 
     # load options
@@ -360,8 +402,6 @@ if __name__ == '__main__':
     else:
         train_params['device'] = torch.device('cpu')
 
-    #     mol = pkl.load(f)
-
     # print('=' * 20 + ' begin train ' + '=' * 20)
     # model_params['max_length'] = max([data.GetNumAtoms() for data in mol])
     # print(f"Max padding length is: {model_params['max_length']}")
@@ -371,8 +411,12 @@ if __name__ == '__main__':
     atom_hidden = 115
     bond_hidden = 13
     train_dataset = Zinc_data(
-        expert_ids_path='../Data/zinc15/expert_ids.npz',
-        expert_property=args.expert_property,
+        data_root=args.data_root,
+        expert_ids_path=args.expert_ids_path,
+        expert_property=(args.expert_assignment_key or args.expert_property),
+        descriptor_values_path=(
+            args.descriptor_values_path if args.descriptor_use != 'none' else None),
+        descriptor_property=args.expert_property,
     )
 
     # valid_dataset = construct_dataset_mask(test_mol, model_params['d_atom'], model_params['d_edge'], model_params['max_length'], mask_rate = 0.25)
@@ -402,6 +446,8 @@ if __name__ == '__main__':
         use_standard_moe=args.use_standard_moe,
         moe_top_k=args.moe_top_k,
         moe_aux_loss_coeff=args.moe_aux_loss_coeff,
+        router_granularity=args.router_granularity,
+        descriptor_use=args.descriptor_use,
     )
     model = make_model(**model_params, **moe_kwargs)
     atom_pred_decoder = GNNDecoder(hidden_dim=256, out_dim=116)
@@ -441,6 +487,12 @@ if __name__ == '__main__':
                 p_ckpt = torch.load(periodic, map_location=train_params['device'])
                 p_epoch = p_ckpt.get('epoch', p_ckpt.get('best_epoch', -1))
                 chosen = (periodic, p_ckpt, p_epoch)
+            best_latest = os.path.join(resume_dir, subdir, 'best_latest.pth')
+            if os.path.exists(best_latest):
+                latest_ckpt = torch.load(best_latest, map_location=train_params['device'])
+                latest_epoch = latest_ckpt.get('best_epoch', latest_ckpt.get('epoch', -1))
+                if chosen is None or latest_epoch > chosen[2]:
+                    chosen = (best_latest, latest_ckpt, latest_epoch)
             if best_ckpts:
                 b_ckpt = torch.load(best_ckpts[-1], map_location=train_params['device'])
                 b_epoch = b_ckpt.get('best_epoch', b_ckpt.get('epoch', -1))
@@ -455,6 +507,23 @@ if __name__ == '__main__':
             else:
                 print(f"WARNING: no checkpoint found for {subdir} in {resume_dir}")
 
+    control_metadata = {
+        'descriptor_use': args.descriptor_use,
+        'descriptor_property': args.expert_property,
+        'descriptor_aux_coeff': args.descriptor_aux_coeff,
+        'assignment_scheme': args.assignment_scheme,
+        'expert_assignment_key': args.expert_assignment_key,
+        'expert_ids_path': args.expert_ids_path,
+        'descriptor_values_path': args.descriptor_values_path,
+        'bucket_edges_file': args.bucket_edges_file,
+        'random_seed': args.seed,
+        'moe_layer_mode': args.moe_layer_mode,
+        'router_granularity': args.router_granularity,
+        'use_contrastive_expert_loss': args.use_contrastive_expert_loss,
+        'contrastive_coff': args.contrastive_coff,
+        'contrastive_temperature': args.contrastive_temperature,
+    }
+    print('CONTROL_METADATA: {}'.format(json.dumps(control_metadata, sort_keys=True)))
     train_loss=model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,smiles_decoder_model, train_dataset, model_params, train_params, args.epochs, args.experiment_name,
                            use_prior_moe=args.use_prior_moe,
                            num_experts=args.num_experts,
@@ -463,5 +532,11 @@ if __name__ == '__main__':
                            contrastive_coff=args.contrastive_coff,
                            contrastive_temperature=args.contrastive_temperature,
                            start_epoch=args.start_epoch,
-                           use_standard_moe=args.use_standard_moe)
+                           use_standard_moe=args.use_standard_moe,
+                           descriptor_use=args.descriptor_use,
+                           descriptor_aux_coeff=args.descriptor_aux_coeff,
+                           control_metadata=control_metadata,
+                           periodic_checkpoint_every=args.periodic_checkpoint_every,
+                           overwrite_best_checkpoint=args.overwrite_best_checkpoint,
+                           model_output_root=args.model_output_root)
     print(train_loss)

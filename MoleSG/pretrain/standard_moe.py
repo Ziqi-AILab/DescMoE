@@ -1,11 +1,11 @@
-"""Standard MoE (learnable gating) for ablation comparison with PriorMoEFFN.
+"""Learned-routing MoE controls for comparison with PriorMoEFFN.
 
 Implements a TopK-gated Mixture-of-Experts FFN that can be plugged into the same
 position as PriorMoEFFN in the Graph Transformer's EncoderLayer.
 
 Key differences from PriorMoEFFN:
   - Uses a learnable linear gating network (no chemical prior)
-  - TopK routing with softmax gating weights
+  - Token-level or molecule-level TopK routing with softmax gating weights
   - Load-balancing auxiliary loss to prevent routing collapse
 """
 
@@ -37,13 +37,13 @@ class _MLPExpert(nn.Module):
 class StandardMoEFFN(nn.Module):
     """TopK-gated MoE FFN with learnable router.
 
-    Supports both 2D input (N, d_model) and 3D input (batch, seq_len, d_model).
-    The gating network is a simple linear layer: gate_logits = W_gate @ x.
-    TopK experts are selected per token, outputs are weighted-summed.
+    ``routing_granularity='token'`` preserves the historical implementation.
+    ``routing_granularity='molecule'`` pools valid node states, selects one
+    branch per molecule, and broadcasts that assignment to all of its nodes.
 
     Attributes:
         num_experts: Number of experts.
-        top_k: Number of experts activated per token.
+        top_k: Number of experts activated per token or molecule.
         gate: Linear gating layer.
         experts: ModuleList of _MLPExpert.
         _aux_loss: Load-balancing loss from last forward pass.
@@ -57,7 +57,8 @@ class StandardMoEFFN(nn.Module):
                  d_out: Optional[int] = None,
                  num_experts: int = 8,
                  top_k: int = 2,
-                 aux_loss_coeff: float = 0.01):
+                 aux_loss_coeff: float = 0.01,
+                 routing_granularity: str = "token"):
         super().__init__()
         if d_out is None:
             d_out = d_model
@@ -68,9 +69,17 @@ class StandardMoEFFN(nn.Module):
         self.top_k = min(top_k, num_experts)
         self.d_out = d_out
         self.aux_loss_coeff = aux_loss_coeff
+        if routing_granularity not in {"token", "molecule"}:
+            raise ValueError(
+                "routing_granularity must be 'token' or 'molecule'")
+        if routing_granularity == "molecule" and self.top_k != 1:
+            raise ValueError("Molecule-level routing currently requires top_k=1")
+        self.routing_granularity = routing_granularity
 
-        # Learnable gating network
-        self.gate = nn.Linear(d_model, num_experts, bias=False)
+        # P8 uses the requested Linear(d_model, num_experts) molecule router.
+        # The bias-free token router is retained for old P6 checkpoints.
+        self.gate = nn.Linear(
+            d_model, num_experts, bias=(routing_granularity == "molecule"))
 
         # All experts are standard MLP (same architecture as PriorMoEFFN's _MLPExpert)
         self.experts = nn.ModuleList([
@@ -80,6 +89,8 @@ class StandardMoEFFN(nn.Module):
 
         # Store aux loss for external access
         self._aux_loss: torch.Tensor = torch.tensor(0.0)
+        self._last_top1_ids: Optional[torch.Tensor] = None
+        self._last_gate_probs: Optional[torch.Tensor] = None
 
     @property
     def aux_loss(self) -> torch.Tensor:
@@ -87,8 +98,34 @@ class StandardMoEFFN(nn.Module):
 
     def forward(self,
                 x: torch.Tensor,
-                expert_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+                expert_ids: Optional[torch.Tensor] = None,
+                node_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Forward pass. expert_ids is IGNORED (accepted for API compatibility)."""
+        if self.routing_granularity == "molecule":
+            return self._forward_molecule(x, node_mask)
+        return self._forward_token(x)
+
+    def _set_aux_loss(self, gate_probs: torch.Tensor,
+                      top1_idx: torch.Tensor) -> None:
+        """Compute Switch-style balance loss over the routed entities."""
+        self._last_top1_ids = top1_idx.detach()
+        self._last_gate_probs = gate_probs.detach()
+        if not self.training:
+            self._aux_loss = gate_probs.new_tensor(0.0)
+            return
+        fractions = torch.stack([
+            (top1_idx == expert).float().mean()
+            for expert in range(self.num_experts)
+        ])
+        mean_probabilities = gate_probs.mean(dim=0)
+        self._aux_loss = (
+            self.aux_loss_coeff
+            * self.num_experts
+            * (fractions * mean_probabilities).sum()
+        )
+
+    def _forward_token(self, x: torch.Tensor) -> torch.Tensor:
+        """Historical token-level routing retained for P6 reproducibility."""
         # Handle 3D input: (B, L, D) -> (B*L, D)
         reshaped = False
         if x.dim() == 3:
@@ -118,24 +155,42 @@ class StandardMoEFFN(nn.Module):
                     expert_out = self.experts[e](x[mask])  # (n_e, d_out)
                     out[mask] += weights[mask].unsqueeze(-1) * expert_out
 
-        # Load-balancing auxiliary loss (Switch Transformer style)
-        # f_i = fraction of tokens routed to expert i
-        # P_i = mean gate probability for expert i
-        # loss = num_experts * sum(f_i * P_i)
-        if self.training:
-            # Use top-1 for load balance computation
-            top1_idx = topk_idx[:, 0]
-            f = torch.zeros(self.num_experts, device=x.device)
-            for e in range(self.num_experts):
-                f[e] = (top1_idx == e).float().mean()
-            P = gate_probs.mean(dim=0)  # (E,)
-            self._aux_loss = self.aux_loss_coeff * self.num_experts * (f * P).sum()
-        else:
-            self._aux_loss = torch.tensor(0.0, device=x.device)
+        self._set_aux_loss(gate_probs, topk_idx[:, 0])
 
         if reshaped:
             out = out.view(B, L, self.d_out)
 
+        return out
+
+    def _forward_molecule(self, x: torch.Tensor,
+                          node_mask: Optional[torch.Tensor]) -> torch.Tensor:
+        """Route every molecule to one branch using masked mean node pooling."""
+        if x.dim() != 3:
+            raise ValueError(
+                "Molecule-level routing requires input shaped (batch, nodes, hidden)")
+        if node_mask is None:
+            raise ValueError("Molecule-level routing requires node_mask")
+        if node_mask.shape != x.shape[:2]:
+            raise ValueError(
+                f"node_mask shape {tuple(node_mask.shape)} does not match "
+                f"input shape {tuple(x.shape[:2])}")
+
+        mask = node_mask.to(device=x.device, dtype=x.dtype).unsqueeze(-1)
+        counts = mask.sum(dim=1).clamp_min(1.0)
+        pooled = (x * mask).sum(dim=1) / counts
+        gate_probs = F.softmax(self.gate(pooled), dim=-1)
+        selected_prob, selected_idx = gate_probs.max(dim=-1)
+
+        batch_size, _, _ = x.shape
+        out = x.new_zeros(batch_size, x.size(1), self.d_out)
+        for expert in range(self.num_experts):
+            molecule_mask = selected_idx == expert
+            if molecule_mask.any():
+                expert_out = self.experts[expert](x[molecule_mask])
+                out[molecule_mask] = (
+                    selected_prob[molecule_mask, None, None] * expert_out)
+
+        self._set_aux_loss(gate_probs, selected_idx)
         return out
 
 

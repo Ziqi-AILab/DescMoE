@@ -1,4 +1,6 @@
 import math
+import argparse
+from pathlib import Path
 import torch
 import random
 import numpy as np
@@ -244,7 +246,10 @@ def pad_array(array, shape, dtype=np.float32):
 
 
 
-def construct_dataset_mask(mol_list, atom_hidden, bond_hidden, max_length, max_ids,tokenizer):
+def construct_dataset_mask(mol_list, atom_hidden, bond_hidden, max_length, max_ids,tokenizer,
+                           output_dir):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     # output = [Molecule_mask(mol, atom_hidden, bond_hidden, max_length, mask_rate) ))]
     for idx, mol in enumerate(tqdm(zip(mol_list), total=len(mol_list))):
         node_features, bond_features, adjacency_matrix, mask_node_labels, masked_atom_indices, token_ids, labels = load_data_from_mol_mask(mol, atom_hidden, bond_hidden, max_length,max_ids,tokenizer)
@@ -261,18 +266,18 @@ def construct_dataset_mask(mol_list, atom_hidden, bond_hidden, max_length, max_i
                      'num_atoms': data.num_nodes,
                      'x': data.x
                      }
-        np.savez('/home/tinama/project/compt/CoMPT/Data/zinc15_0.25_0.5_geo/preprocess/processed_geometric_mol{}.npz'.format(idx), **data_dict)
+        np.savez(output_dir / 'processed_geometric_mol{}.npz'.format(idx), **data_dict)
     return 1
 
 
 
 
 if __name__ == '__main__':
-    # load data
-    # element = '1H'
-    #     [train_all_mol, train_all_cs] = pkl.load(f)
-    #     [test_mol, test_cs] = pkl.load(f)
-    with open('/home/tinama/project/compt/CoMPT/Data/zinc15_250K.pickle', 'rb') as f:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--molecules', required=True)
+    parser.add_argument('--output-dir', required=True)
+    args = parser.parse_args()
+    with open(args.molecules, 'rb') as f:
         mol = pkl.load(f)
 
     max_length =max([data.GetNumAtoms() for data in mol])
@@ -287,7 +292,7 @@ if __name__ == '__main__':
 
     atom_hidden = 115
     bond_hidden = 13
-    train_loader_mask = construct_dataset_mask(mol, atom_hidden=atom_hidden,bond_hidden=bond_hidden, max_length=max_length,max_ids=max_ids,tokenizer=tokenizer)
+    train_loader_mask = construct_dataset_mask(mol, atom_hidden=atom_hidden,bond_hidden=bond_hidden, max_length=max_length,max_ids=max_ids,tokenizer=tokenizer, output_dir=args.output_dir)
 
 
     # for data in train_loader_mask:

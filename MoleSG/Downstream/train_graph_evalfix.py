@@ -55,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fold_indices", default=None)
     parser.add_argument("--gpu", default="0")
     parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--data_root", default="Data")
     parser.add_argument("--batch_size_override", type=int, default=0)
 
     parser.add_argument("--experiment_name", required=True,
@@ -84,6 +85,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--use_standard_moe", action="store_true")
     parser.add_argument("--moe_top_k", type=int, default=2)
     parser.add_argument("--moe_aux_loss_coeff", type=float, default=0.01)
+    parser.add_argument("--router_granularity", choices=["token", "molecule"],
+                        default="token")
     parser.add_argument("--freeze_inactive_experts", action="store_true")
     parser.add_argument("--descriptor_use", choices=["none", "concat", "auxiliary"],
                         default="none")
@@ -92,7 +95,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--assignment_scheme",
         choices=["fixed", "quantile", "occupancy_random", "merge_tail",
-                 "min_occupancy", "learned"], default="fixed")
+                 "stable_random", "min_occupancy", "learned"],
+        default="fixed")
     parser.add_argument("--assignment_manifest", default=None)
     parser.add_argument("--bucket_edges_file", default=None)
 
@@ -142,6 +146,7 @@ def model_kwargs(args: argparse.Namespace) -> dict:
         "use_standard_moe": args.use_standard_moe,
         "moe_top_k": args.moe_top_k,
         "moe_aux_loss_coeff": args.moe_aux_loss_coeff,
+        "router_granularity": args.router_granularity,
         "descriptor_use": args.descriptor_use,
     }
 
@@ -162,14 +167,20 @@ def load_control_inputs(args: argparse.Namespace) -> None:
         if args.assignment_scheme in edge_keys:
             args._bucket_edges = payload["partitions"][args.expert_property][
                 edge_keys[args.assignment_scheme]]
-    if args.assignment_scheme == "occupancy_random":
+    if args.assignment_scheme in {"occupancy_random", "stable_random"}:
         if not args.assignment_manifest:
-            raise ValueError("occupancy_random requires --assignment_manifest")
+            raise ValueError(
+                f"{args.assignment_scheme} requires --assignment_manifest")
         frame = pd.read_csv(args.assignment_manifest)
         if frame.sample_id.duplicated().any():
             raise ValueError(f"Duplicate sample_id in {args.assignment_manifest}")
+        column = ("stable_random_expert_id"
+                  if args.assignment_scheme == "stable_random"
+                  else "random_occ_expert_id")
+        if column not in frame:
+            raise ValueError(f"{column} is absent from {args.assignment_manifest}")
         args._assignment_map = dict(zip(
-            frame.sample_id.astype(str), frame.random_occ_expert_id.astype(int)))
+            frame.sample_id.astype(str), frame[column].astype(int)))
     if args.descriptor_use != "none":
         if not args.descriptor_stats:
             raise ValueError(f"{args.descriptor_use} requires --descriptor_stats")
@@ -185,7 +196,7 @@ def active_expert_ids(args: argparse.Namespace, smiles: list[str], device: torch
                       sample_ids: list[str] | None = None):
     if not args.use_prior_moe:
         return None
-    if args.assignment_scheme == "occupancy_random":
+    if args.assignment_scheme in {"occupancy_random", "stable_random"}:
         if sample_ids is None:
             raise ValueError("Random assignment requires sample IDs")
         missing = [sample_id for sample_id in sample_ids
@@ -263,6 +274,7 @@ def evaluate_model(model, dataset, args, train_params, split_name: str) -> tuple
     labels: list[np.ndarray] = []
     predictions: list[np.ndarray] = []
     embeddings: list[np.ndarray] = []
+    router_expert_ids: list[int] = []
     with torch.no_grad():
         for batch in loader:
             (batch_ids, batch_indices, batch_smiles, adjacency_matrix,
@@ -278,12 +290,37 @@ def evaluate_model(model, dataset, args, train_params, split_name: str) -> tuple
             y_pred, y_embedding = model(
                 node_features, batch_mask, adjacency_matrix, edge_features,
                 expert_ids=expert_ids, descriptor_values=descriptor_values)
+            if args.use_standard_moe and args.router_granularity == "molecule":
+                routed_layers = [
+                    layer.feed_forward
+                    for layer in model.encoder.layers
+                    if getattr(
+                        layer.feed_forward, "routing_granularity", None
+                    ) == "molecule"
+                ]
+                if len(routed_layers) != 1:
+                    raise RuntimeError(
+                        "Molecule-level control requires exactly one routed layer")
+                batch_routes = routed_layers[0]._last_top1_ids
+                if batch_routes is None or batch_routes.numel() != len(batch_ids):
+                    raise RuntimeError(
+                        "Molecule router did not emit one branch ID per molecule")
+                router_expert_ids.extend(
+                    int(value) for value in batch_routes.cpu().tolist())
             sample_ids.extend(batch_ids)
             source_indices.extend(int(value) for value in batch_indices)
             smiles.extend(batch_smiles)
             labels.append(y_true.numpy())
             predictions.append(y_pred.detach().cpu().numpy())
-            embeddings.append(y_embedding.detach().cpu().numpy())
+            if y_embedding.ndim == 3:
+                mask = batch_mask.unsqueeze(-1).to(y_embedding.dtype)
+                pooled_embedding = (
+                    (y_embedding * mask).sum(dim=1)
+                    / mask.sum(dim=1).clamp_min(1.0)
+                )
+            else:
+                pooled_embedding = y_embedding
+            embeddings.append(pooled_embedding.detach().cpu().numpy())
 
     label_array = np.concatenate(labels, axis=0)
     prediction_array = np.concatenate(predictions, axis=0)
@@ -297,17 +334,24 @@ def evaluate_model(model, dataset, args, train_params, split_name: str) -> tuple
     result["source_row_index"] = source_indices
     result["canonical_smiles"] = smiles
     result["valid_endpoints"] = valid_endpoint_count(label_array)
+    if args.use_standard_moe and args.router_granularity == "molecule":
+        if len(router_expert_ids) != len(sample_ids):
+            raise RuntimeError("Molecule-router assignment count is incomplete")
+        result["router_expert_id"] = router_expert_ids
     return result, embedding_array
 
 
 def prediction_frame(result: dict) -> pd.DataFrame:
-    return pd.DataFrame({
+    columns = {
         "sample_id": result["sample_id"],
         "source_row_index": result["source_row_index"],
         "canonical_smiles": result["canonical_smiles"],
         "actual": [json.dumps(value) for value in result["label"]],
         "prediction": [json.dumps(value) for value in result["prediction"]],
-    })
+    }
+    if "router_expert_id" in result:
+        columns["router_expert_id"] = result["router_expert_id"]
+    return pd.DataFrame(columns)
 
 
 def write_evaluation(result: dict, embeddings: np.ndarray, dataset, args,
@@ -324,6 +368,12 @@ def write_evaluation(result: dict, embeddings: np.ndarray, dataset, args,
     frame.to_csv(prediction_path, index=False)
     frame[["sample_id", "source_row_index", "canonical_smiles"]].to_csv(
         sample_manifest_path, index=False)
+    router_ids = result.get("router_expert_id")
+    router_occupancy = None
+    if router_ids is not None:
+        router_occupancy = np.bincount(
+            np.asarray(router_ids, dtype=np.int64), minlength=args.num_experts
+        ).tolist()
     metadata = {
         "protocol": "evalfix_full_coverage_v1",
         "mode": args.mode,
@@ -347,6 +397,16 @@ def write_evaluation(result: dict, embeddings: np.ndarray, dataset, args,
         "assignment_scheme": args.assignment_scheme,
         "assignment_manifest": args.assignment_manifest,
         "bucket_edges_file": args.bucket_edges_file,
+        "use_prior_moe": args.use_prior_moe,
+        "use_standard_moe": args.use_standard_moe,
+        "num_experts": args.num_experts,
+        "expert_type": args.expert_type,
+        "moe_layer_mode": args.moe_layer_mode,
+        "router_top_k": args.moe_top_k,
+        "router_granularity": args.router_granularity,
+        "router_routed_molecules": (
+            len(router_ids) if router_ids is not None else None),
+        "router_occupancy": router_occupancy,
         "metric": train_params_metric(result),
         "validation_best_epoch": (
             checkpoint_metadata.get("best_epoch") if checkpoint_metadata else None),
@@ -394,6 +454,9 @@ def require_frozen_lock(path: str | None, args: argparse.Namespace) -> dict:
     payload = json.loads(lock_path.read_text())
     if payload.get("status") != "frozen":
         raise RuntimeError(f"Model definition is not frozen: {lock_path}")
+    if args.mode == "final_test" and payload.get("final_test_release") is not True:
+        raise RuntimeError(
+            f"Final test has not been released by the frozen panel: {lock_path}")
     allowed = payload.get("allowed_source_experiments", [])
     source = args.source_experiment_name or args.experiment_name
     if source not in allowed:
@@ -481,6 +544,7 @@ def train_one_fold(model, train_dataset, valid_dataset, args, model_params,
                     "assignment_scheme": args.assignment_scheme,
                     "assignment_manifest": args.assignment_manifest,
                     "bucket_edges_file": args.bucket_edges_file,
+                    "router_granularity": args.router_granularity,
                 },
             }, checkpoint_path)
         history.append({
@@ -533,7 +597,7 @@ def main() -> int:
         f"EVALUATION_PROTOCOL: corrected_full_coverage validation_shuffle=false "
         f"validation_drop_last=false test_shuffle=false test_drop_last=false")
 
-    data_path = Path("Data") / args.dataset / "preprocess" / f"{args.dataset}.pickle"
+    data_path = Path(args.data_root) / args.dataset / "preprocess" / f"{args.dataset}.pickle"
     with data_path.open("rb") as handle:
         data_mol, data_label = pickle.load(handle)
     model_params["max_length"] = max(mol.GetNumAtoms() for mol in data_mol)
