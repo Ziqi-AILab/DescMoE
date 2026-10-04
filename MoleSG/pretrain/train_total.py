@@ -44,7 +44,7 @@ def sce_loss(x, y, alpha=1):
     return loss
 
 def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,smiles_decoder_model, train_dataset, model_params, train_params, epochs, experiment_name,
-                # ---- MoFE flags ----
+                # ---- DescMoE flags ----
                 use_prior_moe=False, num_experts=8, expert_property='n_heavy',
                 use_contrastive_expert_loss=False, contrastive_coff=0.1, contrastive_temperature=0.1,
                 start_epoch=0,
@@ -119,7 +119,7 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
 
             batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0   # (batch_size, max_length)
 
-            # ---- MoFE: use pre-computed expert_ids from dataloader ----
+            # ---- DescMoE: use pre-computed expert_ids from dataloader ----
             mol_expert_ids = None
             if use_prior_moe:
                 mol_expert_ids = batch_expert_ids.to(train_params['device'])
@@ -156,7 +156,7 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
                     batch_descriptor_values.to(model.descriptor_prediction.dtype))
                 loss = loss + descriptor_aux_coeff * descriptor_loss
 
-            # ---- MoFE: contrastive expert loss ----
+            # ---- DescMoE: contrastive expert loss ----
             if use_contrastive_expert_loss and mol_expert_ids is not None:
                 # mean-pool graph branch node embeddings to get molecule-level repr
                 node_mask_float = batch_mask.unsqueeze(-1).float()  # (B, L, 1)
@@ -189,36 +189,6 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
             optimizer_smiles_decoder_model.step_and_update_lr()
 
 
-        # valid
-        # model.eval()
-        # with torch.no_grad():
-        #     valid_result = dict()
-        #     valid_result['label'], valid_result['prediction'], valid_result['loss'] = list(), list(), list()
-        #     for batch in tqdm(valid_loader):
-        #         adjacency_matrix, node_features, edge_features, y_true = batch
-        #         adjacency_matrix = adjacency_matrix.to(train_params['device'])  # (batch_size, max_length, max_length)
-        #         node_features = node_features.to(train_params['device'])  # (batch_size, max_length, d_node)
-        #         edge_features = edge_features.to(train_params['device'])  # (batch_size, max_length, max_length, d_edge)
-        #
-        #         batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0  # (batch_size, max_length)
-        #         # (batch_size, max_length, 1)
-        #         y_pred = model(node_features, batch_mask, adjacency_matrix, edge_features)
-        #
-        #         y_true = y_true.numpy().flatten()
-        #         y_pred = y_pred.cpu().detach().numpy().flatten()
-        #         y_mask = np.where(y_true != 0., 1, 0)
-        #
-        #         times = 0
-        #         for true, pred in zip(y_true, y_pred):
-        #             if true != 0.:
-        #                 times += 1
-        #                 valid_result['label'].append(true)
-        #                 valid_result['prediction'].append(pred)
-        #                 valid_result['loss'].append(np.abs(true - pred))
-        #         assert times == np.sum(y_mask)
-        #
-        #     valid_result['r2'] = metrics.r2_score(valid_result['label'], valid_result['prediction'])
-
         epoch_elapsed = time.time() - epoch_start
         epoch_times.append(epoch_elapsed)
         avg_epoch = sum(epoch_times) / len(epoch_times)
@@ -230,7 +200,7 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
 
 
 
-        # save the model and valid result
+        # Save component weights when terminal-batch loss improves.
         if loss < best_valid_loss:
             checkpoint_name = ("best_latest.pth" if overwrite_best_checkpoint
                                else "compt_epoch{}.pth".format(epoch))
@@ -261,66 +231,9 @@ def model_train(model, atom_pred_decoder, smiles_encoder_model,encoder_model ,sm
                            model_dir / subdir / "periodic_latest.pth")
             print("  Periodic checkpoint saved at epoch {}".format(epoch + 1))
 
-        # temp test
-        # if (epoch + 1) % 10 == 0:
-        #     checkpoint = torch.load(f'./Model/{dataset_name}/best_model_{dataset_name}_{element}.pt')
-        #     print('=' * 20 + ' middle test ' + '=' * 20)
-        #     test_result = model_test(checkpoint, test_dataset, model_params, train_params)
-        #     print("best epoch: {}, best valid loss: {:.4f}, test loss: {:.4f}, test r2: {:.4f}".format(
-        #         checkpoint['best_epoch'], checkpoint['best_valid_loss'], np.mean(test_result['loss']), test_result['r2']
-        #     ))
-        #     print('=' * 40)
-        #
-        # # early stop
-        # if abs(best_epoch - epoch) >= 20:
-        #     print("=" * 20 + ' early stop ' + "=" * 20)
-        #     break
         loss_accum += float(loss.cpu().item())
 
     return loss_accum
-
-
-# def model_test(checkpoint, test_dataset, model_params, train_params):
-#     # build loader
-#     test_loader = DataLoader(dataset=test_dataset, batch_size=train_params['batch_size'], collate_fn=mol_collate_func_mask,
-#                              shuffle=False, drop_last=True, num_workers=4, pin_memory=True)
-#
-#     # build model
-#     model = make_model(**model_params)
-#     model.to(train_params['device'])
-#     model.load_state_dict(checkpoint['state_dict'])
-#
-#     # test
-#     model.eval()
-#     with torch.no_grad():
-#         test_result = dict()
-#         test_result['label'], test_result['prediction'], test_result['loss'] = list(), list(), list()
-#         for batch in tqdm(test_loader):
-#             adjacency_matrix, node_features, edge_features = batch
-#             adjacency_matrix = adjacency_matrix.to(train_params['device'])  # (batch_size, max_length, max_length)
-#             node_features = node_features.to(train_params['device'])  # (batch_size, max_length, d_node)
-#             edge_features = edge_features.to(train_params['device'])  # (batch_size, max_length, max_length, d_edge)
-#
-#             batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0  # (batch_size, max_length)
-#             # (batch_size, max_length, 1)
-#             y_pred = model(node_features, batch_mask, adjacency_matrix, edge_features)
-#
-#
-#             y_true = y_true.numpy().flatten()
-#             y_pred = y_pred.cpu().detach().numpy().flatten()
-#             y_mask = np.where(y_true != 0., 1, 0)
-#
-#             times = 0
-#             for true, pred in zip(y_true, y_pred):
-#                 if true != 0.:
-#                     times += 1
-#                     test_result['label'].append(true)
-#                     test_result['prediction'].append(pred)
-#                     test_result['loss'].append(np.abs(true - pred))
-#             assert times == np.sum(y_mask)
-#     test_result['r2'] = metrics.r2_score(test_result['label'], test_result['prediction'])
-#     test_result['best_valid_loss'] = checkpoint['best_valid_loss']
-#     return test_result
 
 
 if __name__ == '__main__':
@@ -334,7 +247,7 @@ if __name__ == '__main__':
     parser.add_argument("--experiment_name", type=str, help="experiment_name", default='')
     parser.add_argument("--data_root", default='../Data/zinc15/zinc15_0.25_geo/preprocess')
     parser.add_argument("--model_output_root", default='./Model')
-    # ---- MoFE flags ----
+    # ---- DescMoE flags ----
     parser.add_argument("--use_prior_moe", action='store_true', default=False,
                         help="Replace Graph Transformer FFN with PriorMoEFFN")
     parser.add_argument("--num_experts", type=int, default=8)
@@ -348,7 +261,7 @@ if __name__ == '__main__':
     parser.add_argument("--kan_spline_order", type=int, default=3)
     parser.add_argument("--moe_layer_mode", type=str, default='all',
                         choices=['all', 'last', 'odd', 'even', 'none'],
-                        help="Which transformer FFN layers use MoE/MoFE. odd/even use 1-based layer numbers.")
+                        help="Which transformer FFN layers use learned MoE or DescMoE. odd/even use 1-based layer numbers.")
     parser.add_argument("--moe_layer_indices", type=str, default=None,
                         help="Optional comma-separated zero-based layer indices overriding --moe_layer_mode")
     parser.add_argument("--use_contrastive_expert_loss", action='store_true', default=False)

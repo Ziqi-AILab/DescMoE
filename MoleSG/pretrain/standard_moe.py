@@ -1,13 +1,4 @@
-"""Learned-routing MoE controls for comparison with PriorMoEFFN.
-
-Implements a TopK-gated Mixture-of-Experts FFN that can be plugged into the same
-position as PriorMoEFFN in the Graph Transformer's EncoderLayer.
-
-Key differences from PriorMoEFFN:
-  - Uses a learnable linear gating network (no chemical prior)
-  - Token-level or molecule-level TopK routing with softmax gating weights
-  - Load-balancing auxiliary loss to prevent routing collapse
-"""
+"""Learned-routing MLP controls with molecule-level or historical token routing."""
 
 from __future__ import annotations
 
@@ -76,7 +67,7 @@ class StandardMoEFFN(nn.Module):
             raise ValueError("Molecule-level routing currently requires top_k=1")
         self.routing_granularity = routing_granularity
 
-        # P8 uses the requested Linear(d_model, num_experts) molecule router.
+        # Molecule routing uses a biased linear projection.
         # The bias-free token router is retained for old P6 checkpoints.
         self.gate = nn.Linear(
             d_model, num_experts, bias=(routing_granularity == "molecule"))

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import re
 from pathlib import Path
 
@@ -69,21 +70,18 @@ def main() -> None:
     if personal_paths:
         raise SystemExit(f"personal absolute paths remain: {personal_paths}")
 
-    tex = (ROOT / "paper_v3.0_all_in_one.tex").read_text(encoding="utf-8")
-    bib = (ROOT / "references.bib").read_text(encoding="utf-8")
-    citation_keys = {
-        key.strip()
-        for group in re.findall(r"\\cite\{([^}]+)\}", tex)
-        for key in group.split(",")
-    }
-    bibliography_keys = set(re.findall(r"^@[A-Za-z]+\{([^,]+),", bib, re.MULTILINE))
-    missing_citations = sorted(citation_keys - bibliography_keys)
-    if missing_citations:
-        raise SystemExit(f"citation keys missing from references.bib: {missing_citations}")
+    with (ROOT / "configs/final_model_matrix.tsv").open() as handle:
+        models = list(csv.DictReader(handle, delimiter="\t"))
+    if len(models) != 16 or len({row["model"] for row in models}) != 16:
+        raise SystemExit("expected 16 distinct final model configurations")
+    if not all(row.get("paper_label", "").strip() for row in models):
+        raise SystemExit("each configuration needs a manuscript display name")
+    if sum(row["paper_label"].startswith("DescMoE") for row in models) != 4:
+        raise SystemExit("only fixed and fixed + ConLoss use the DescMoE label")
 
     print(
         "repository check OK "
-        f"required={len(REQUIRED)} citations={len(citation_keys)}"
+        f"required={len(REQUIRED)} configurations={len(models)}"
     )
 
 

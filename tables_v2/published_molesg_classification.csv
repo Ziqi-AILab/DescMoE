@@ -1,9 +1,0 @@
-dataset,published_auc_mean,published_auc_sd,runs,source
-bbbp,0.979,0.003,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-tox21,0.85,0.012,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-toxcast,0.742,0.005,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-sider,0.7,0.002,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-clintox,0.991,0.009,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-bace,0.951,0.021,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-hiv,0.877,0.019,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"
-muv,0.851,0.008,3,"MoleSG, Briefings in Bioinformatics 2024, doi:10.1093/bib/bbae256"

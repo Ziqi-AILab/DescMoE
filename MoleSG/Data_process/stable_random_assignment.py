@@ -1,4 +1,4 @@
-"""Cross-stage deterministic random assignments for matched MoFE controls."""
+"""Cross-stage deterministic random assignments for DescMoE controls."""
 
 from __future__ import annotations
 

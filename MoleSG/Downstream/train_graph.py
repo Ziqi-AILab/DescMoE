@@ -122,7 +122,7 @@ def _standard_moe_aux_loss(model, device):
 
 
 def model_train(model, train_dataset, valid_dataset, model_params, train_params, dataset_name, experiment_name,fold,
-                # ---- MoFE flags ----
+                # ---- DescMoE flags ----
                 use_prior_moe=False, num_experts=8, expert_property='tpsa',                freeze_inactive_experts=False,
                 use_standard_moe=False,
                 num_workers=4):
@@ -156,7 +156,7 @@ def model_train(model, train_dataset, valid_dataset, model_params, train_params,
             edge_features = edge_features.to(train_params['device'])  # (batch, max_length, max_length, d_edge)
             y_true = y_true.to(train_params['device'])  # (batch, task_numbers)
             batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0  # (batch, max_length)
-            # ---- MoFE: compute expert_ids from SMILES ----
+            # ---- DescMoE: compute expert_ids from SMILES ----
             mol_expert_ids = None
             if use_prior_moe:
                 eid_list = assign_expert_ids(smile_list, property_name=expert_property, num_experts=num_experts)
@@ -186,7 +186,7 @@ def model_train(model, train_dataset, valid_dataset, model_params, train_params,
                 node_features = node_features.to(train_params['device'])  # (batch, max_length, d_node)
                 edge_features = edge_features.to(train_params['device'])  # (batch, max_length, max_length, d_edge)
                 batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0  # (batch, max_length)
-                # ---- MoFE: compute expert_ids ----
+                # ---- DescMoE: compute expert_ids ----
                 mol_expert_ids = None
                 if use_prior_moe:
                     eid_list = assign_expert_ids(smile_list, property_name=expert_property, num_experts=num_experts)
@@ -288,7 +288,7 @@ def model_test(checkpoint, test_dataset, model_params, train_params,
             node_features = node_features.to(train_params['device'])  # (batch, max_length, d_node)
             edge_features = edge_features.to(train_params['device'])  # (batch, max_length, max_length, d_edge)
             batch_mask = torch.sum(torch.abs(node_features), dim=-1) != 0  # (batch, max_length)
-            # ---- MoFE: compute expert_ids ----
+            # ---- DescMoE: compute expert_ids ----
             mol_expert_ids = None
             if use_prior_moe:
                 eid_list = assign_expert_ids(smile_list, property_name=expert_property, num_experts=num_experts)
@@ -328,7 +328,7 @@ if __name__ == '__main__':
                         choices=['random', 'scaffold', 'cv'])
     parser.add_argument("--ckpt_path", type=str, help="ckpt-path", default=None)
     parser.add_argument("--experiment_name", type=str, help="experiment_nam", default=None)
-    # ---- MoFE flags ----
+    # ---- DescMoE flags ----
     parser.add_argument("--use_prior_moe", action='store_true', default=False)
     parser.add_argument("--num_experts", type=int, default=8)
     parser.add_argument("--expert_property", type=str, default='tpsa',
@@ -340,7 +340,7 @@ if __name__ == '__main__':
     parser.add_argument("--kan_spline_order", type=int, default=3)
     parser.add_argument("--moe_layer_mode", type=str, default='all',
                         choices=['all', 'last', 'odd', 'even', 'none'],
-                        help='Which transformer FFN layers use MoE/MoFE. odd/even use 1-based layer numbers.')
+                        help='Which transformer FFN layers use learned MoE or DescMoE. odd/even use 1-based layer numbers.')
     parser.add_argument("--moe_layer_indices", type=str, default=None,
                         help='Optional comma-separated zero-based layer indices overriding --moe_layer_mode.')
     parser.add_argument("--moe_d_ff", type=int, default=0)
@@ -367,7 +367,7 @@ if __name__ == '__main__':
                         help='Build the resolved model, validate its checkpoint, and exit before training.')
     args = parser.parse_args()
 
-    # parse MoFE kwargs
+    # parse DescMoE kwargs
     kan_expert_indices = None
     if args.kan_expert_indices:
         kan_expert_indices = [int(x) for x in args.kan_expert_indices.split(',')]
@@ -409,7 +409,7 @@ if __name__ == '__main__':
         old_batch_size = train_params['batch_size']
         train_params['batch_size'] = args.batch_size_override
         print(f"Batch size override: {old_batch_size} -> {train_params['batch_size']}")
-    # ---- inject MoFE flags into model_params so all make_model calls get them ----
+    # ---- inject DescMoE flags into model_params so all make_model calls get them ----
     model_params.update(moe_kwargs)
 
     # init device and seed

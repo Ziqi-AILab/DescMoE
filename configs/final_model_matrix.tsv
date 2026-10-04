@@ -1,17 +1,17 @@
-model	result_exp	partition	control	descriptor_use	assignment_scheme	moe_layer_mode	expert_type	kan_indices	conloss_coeff	contrastive_temperature	descriptor_aux_coeff	router_aux_coeff	pretrain_seed	pretrain_epochs	pretrain_batch_size	source_group
-p3_base_vanilla	p3_base_vanilla_n8aligned_evalfix	shared	dense_base	none	fixed	none	ffn		0	0.1	0	0	42	300	32	model_specs
-p3_tpsa_mofe_last_ffn	p3_tpsa_mofe_last_ffn_n8aligned_evalfix	tpsa	fixed_assignment	none	fixed	last	ffn		0	0.1	0	0	42	300	32	model_specs
-p3_logp_mofe_last_ffn	p3_logp_mofe_last_ffn_n8aligned_evalfix	logp	fixed_assignment	none	fixed	last	ffn		0	0.1	0	0	42	300	32	model_specs
-p3_tpsa_mofe_last_ffn_conloss	p3_tpsa_mofe_last_ffn_conloss_n8aligned_evalfix	tpsa	fixed_assignment_conloss	none	fixed	last	ffn		0.1	0.1	0	0	42	300	32	model_specs
-p3_logp_mofe_last_ffn_conloss	p3_logp_mofe_last_ffn_conloss_n8aligned_evalfix	logp	fixed_assignment_conloss	none	fixed	last	ffn		0.1	0.1	0	0	42	300	32	model_specs
-p6_tpsa_descriptor_concat_last	p6_tpsa_descriptor_concat_last_n8_evalfix	tpsa	descriptor_concatenation	concat	fixed	none	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs
-p6_tpsa_descriptor_auxiliary	p6_tpsa_descriptor_auxiliary_n8_evalfix	tpsa	auxiliary_descriptor_prediction	auxiliary	fixed	none	ffn		0	0.1	0.1	0	42	300	32	reused_p6_model_specs
-p6_tpsa_quantile_routing_last	p6_tpsa_quantile_routing_last_n8_evalfix	tpsa	quantile_assignment	none	quantile	last	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs
-p6_logp_quantile_routing_last	p6_logp_quantile_routing_last_n8_evalfix	logp	quantile_assignment	none	quantile	last	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs
-p6_logp_descriptor_concat_last	p6_logp_descriptor_concat_last_n8_evalfix	logp	descriptor_concatenation	concat	fixed	none	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs
-p6_logp_descriptor_auxiliary	p6_logp_descriptor_auxiliary_n8_evalfix	logp	auxiliary_descriptor_prediction	auxiliary	fixed	none	ffn		0	0.1	0.1	0	42	300	32	reused_p6_model_specs
-p8_tpsa_stable_random_last	p8_tpsa_stable_random_last_n8_evalfix	tpsa	stable_random_assignment	none	stable_random	last	ffn		0	0.1	0	0	42	300	32	p8_model_specs
-p8_tpsa_stable_random_conloss_last	p8_tpsa_stable_random_conloss_last_n8_evalfix	tpsa	stable_random_assignment_conloss	none	stable_random	last	ffn		0.1	0.1	0	0	42	300	32	p8_model_specs
-p8_logp_stable_random_last	p8_logp_stable_random_last_n8_evalfix	logp	stable_random_assignment	none	stable_random	last	ffn		0	0.1	0	0	42	300	32	p8_model_specs
-p8_logp_stable_random_conloss_last	p8_logp_stable_random_conloss_last_n8_evalfix	logp	stable_random_assignment_conloss	none	stable_random	last	ffn		0.1	0.1	0	0	42	300	32	p8_model_specs
-p8_learned_molecule_top1_last	p8_learned_molecule_top1_last_n8_evalfix	shared	learned_molecule_top1	none	learned	last	ffn		0	0.1	0	0.01	42	300	32	p8_model_specs
+model	result_exp	partition	control	descriptor_use	assignment_scheme	moe_layer_mode	expert_type	kan_indices	conloss_coeff	contrastive_temperature	descriptor_aux_coeff	router_aux_coeff	pretrain_seed	pretrain_epochs	pretrain_batch_size	source_group	paper_label
+p3_base_vanilla	p3_base_vanilla_n8aligned_evalfix	shared	dense_base	none	fixed	none	ffn		0	0.1	0	0	42	300	32	model_specs	Dense Base
+p3_tpsa_mofe_last_ffn	p3_tpsa_mofe_last_ffn_n8aligned_evalfix	tpsa	fixed_assignment	none	fixed	last	ffn		0	0.1	0	0	42	300	32	model_specs	DescMoE (TPSA)
+p3_logp_mofe_last_ffn	p3_logp_mofe_last_ffn_n8aligned_evalfix	logp	fixed_assignment	none	fixed	last	ffn		0	0.1	0	0	42	300	32	model_specs	DescMoE (MolLogP)
+p3_tpsa_mofe_last_ffn_conloss	p3_tpsa_mofe_last_ffn_conloss_n8aligned_evalfix	tpsa	fixed_assignment_conloss	none	fixed	last	ffn		0.1	0.1	0	0	42	300	32	model_specs	DescMoE + ConLoss (TPSA)
+p3_logp_mofe_last_ffn_conloss	p3_logp_mofe_last_ffn_conloss_n8aligned_evalfix	logp	fixed_assignment_conloss	none	fixed	last	ffn		0.1	0.1	0	0	42	300	32	model_specs	DescMoE + ConLoss (MolLogP)
+p6_tpsa_descriptor_concat_last	p6_tpsa_descriptor_concat_last_n8_evalfix	tpsa	descriptor_concatenation	concat	fixed	none	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs	Concatenation (TPSA)
+p6_tpsa_descriptor_auxiliary	p6_tpsa_descriptor_auxiliary_n8_evalfix	tpsa	auxiliary_descriptor_prediction	auxiliary	fixed	none	ffn		0	0.1	0.1	0	42	300	32	reused_p6_model_specs	Auxiliary prediction (TPSA)
+p6_tpsa_quantile_routing_last	p6_tpsa_quantile_routing_last_n8_evalfix	tpsa	quantile_assignment	none	quantile	last	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs	Quantile assignment (TPSA)
+p6_logp_quantile_routing_last	p6_logp_quantile_routing_last_n8_evalfix	logp	quantile_assignment	none	quantile	last	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs	Quantile assignment (MolLogP)
+p6_logp_descriptor_concat_last	p6_logp_descriptor_concat_last_n8_evalfix	logp	descriptor_concatenation	concat	fixed	none	ffn		0	0.1	0	0	42	300	32	reused_p6_model_specs	Concatenation (MolLogP)
+p6_logp_descriptor_auxiliary	p6_logp_descriptor_auxiliary_n8_evalfix	logp	auxiliary_descriptor_prediction	auxiliary	fixed	none	ffn		0	0.1	0.1	0	42	300	32	reused_p6_model_specs	Auxiliary prediction (MolLogP)
+p8_tpsa_stable_random_last	p8_tpsa_stable_random_last_n8_evalfix	tpsa	stable_random_assignment	none	stable_random	last	ffn		0	0.1	0	0	42	300	32	p8_model_specs	Stable random (TPSA)
+p8_tpsa_stable_random_conloss_last	p8_tpsa_stable_random_conloss_last_n8_evalfix	tpsa	stable_random_assignment_conloss	none	stable_random	last	ffn		0.1	0.1	0	0	42	300	32	p8_model_specs	Stable random + ConLoss (TPSA)
+p8_logp_stable_random_last	p8_logp_stable_random_last_n8_evalfix	logp	stable_random_assignment	none	stable_random	last	ffn		0	0.1	0	0	42	300	32	p8_model_specs	Stable random (MolLogP)
+p8_logp_stable_random_conloss_last	p8_logp_stable_random_conloss_last_n8_evalfix	logp	stable_random_assignment_conloss	none	stable_random	last	ffn		0.1	0.1	0	0	42	300	32	p8_model_specs	Stable random + ConLoss (MolLogP)
+p8_learned_molecule_top1_last	p8_learned_molecule_top1_last_n8_evalfix	shared	learned_molecule_top1	none	learned	last	ffn		0	0.1	0	0.01	42	300	32	p8_model_specs	Learned molecule router

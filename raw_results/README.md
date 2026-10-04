@@ -1,8 +1,8 @@
 # External Raw Results
 
 Raw prediction CSV files, node-embedding pickles, training histories, and Slurm
-logs are excluded. Canonical derived tables required by the plotting scripts
-are included in `tables_v2/`.
+logs are excluded. Lightweight fold results and summaries are included in
+`results/corrected/`. Historical screening summaries are in `results/historical/`.
 
 The original downstream layout is:
 
@@ -18,6 +18,7 @@ MoleSG/Downstream/Result_evalfix/<dataset>/
 MoleSG/Downstream/Model_evalfix/<dataset>/<experiment>/
 ```
 
-The canonical CSV files under `tables_v2/` are small derived artifacts used to
-regenerate the manuscript figures. They are intentionally included. Raw model
-predictions and embeddings are intentionally excluded.
+For a new reproduction, `scripts/run_model.py` writes under the supplied
+`--run-root` instead of these research-directory paths. Retain predictions,
+sample manifests, and validation-selected checkpoints there. The included
+statistics script can rebuild reported summaries without those large files.

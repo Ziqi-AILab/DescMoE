@@ -21,6 +21,3 @@ dependencies:
   - pip:
       - transformers==4.31.0
       - tokenizers==0.13.3
-      - python-pptx==1.0.2
-      - PyMuPDF==1.27.2.2
-      - pypdf==6.10.2

@@ -1,12 +1,8 @@
-"""Prior-knowledge based MoE (no router) + KAN expert + contrastive expert loss.
+"""DescMoE branch assignment, branch transformations, and ConLoss.
 
 Adapted from KERMT/kermt/model/prior_moe.py for MoleSG's Graph Transformer.
-Key difference: supports 3D input (batch, seq_len, d_model) in addition to 2D.
-
-Three innovations (all switchable via if-branches):
-  1. PriorMoEFFN: No-router MoE with offline expert assignment from chemical priors.
-  2. KANExpert: B-spline KAN expert as drop-in replacement for MLP expert.
-  3. expert_contrastive_loss: SupCon-style loss pulling same-expert embeddings together.
+Accepts node tensors with shape (batch, seq_len, d_model) or (rows, d_model).
+KAN modules support the historical branch-function screening configurations.
 """
 
 from __future__ import annotations

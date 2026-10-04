@@ -1,9 +1,0 @@
-dataset,molecules,tasks,task_type,split,folds,seeds,metric,source_pickle
-bbbp,2035,1,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/bbbp/preprocess/bbbp.pickle
-tox21,7821,12,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/tox21/preprocess/tox21.pickle
-toxcast,8577,617,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/toxcast/preprocess/toxcast.pickle
-sider,1379,27,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/sider/preprocess/sider.pickle
-clintox,1468,2,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/clintox/preprocess/clintox.pickle
-bace,1513,1,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/bace/preprocess/bace.pickle
-hiv,41127,1,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/hiv/preprocess/hiv.pickle
-muv,93087,17,classification,scaffold 8:1:1,5,"42,43,44,45,46",ROC-AUC,MoleSG/Downstream/Data/muv/preprocess/muv.pickle

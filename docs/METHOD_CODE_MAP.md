@@ -7,13 +7,13 @@ are retained for checkpoint compatibility. Manuscript prose uses `branch`.
 | --- | --- | --- |
 | ZINC graph/SMILES corruption | `MoleSG/Data_process/data_geometirc_maeratio.py`, `load_data_from_mol_mask` | Stored NPZ cache, same source rows |
 | Eight-layer graph encoder | `MoleSG/pretrain/transformer_graph.py`, `make_model`, `EncoderLayer` | N=8, width=256, heads=8, ScaleNorm |
-| Fixed region assignment | `MoleSG/pretrain/prior_moe.py`, `assign_expert_ids`, `PriorMoEFFN.forward` | Threshold equality enters the right region |
+| DescMoE assignment | `MoleSG/pretrain/prior_moe.py`, `assign_expert_ids`, `PriorMoEFFN.forward` | Threshold equality enters the right region |
 | Shared descriptor concatenation | `transformer_graph.py`, `DescriptorConditionedFeedForward` | Only layer 8, 257 to 256 to 256, Mish after both transformations |
 | Auxiliary descriptor prediction | `transformer_graph.py`, `GraphTransformer.forward`; `train_total.py`, `model_train` | Masked pooling, linear head, standardized target, 0.1 MSE |
 | Descriptor mean/scale and quantiles | `scripts/prepare_matched_control_assignments.py`, `prepare_zinc`, `quantile_edges` | ZINC population SD, NumPy linear quantiles |
 | Stable random molecule rule | `MoleSG/Data_process/stable_random_assignment.py` | Canonical SMILES bytes, axis code, seed 42, SeedSequence/PCG64 |
 | Random occupancy thresholds | Same module, `occupancy_matched_score_edges` | Fit on ZINC only, keep identical keys together |
-| Molecule learned router | `MoleSG/pretrain/standard_moe.py`, `StandardMoEFFN` | Post-attention masked pooling, Linear(256,8), top1 probability retained |
+| Learned molecule router | `MoleSG/pretrain/standard_moe.py`, `StandardMoEFFN` | Post-attention masked pooling, Linear(256,8), top1 probability retained |
 | ConLoss | `MoleSG/pretrain/prior_moe.py`, `expert_contrastive_loss`; `train_total.py`, `model_train` | Before graph/SMILES fusion, coefficient/temperature 0.1 |
 | Corrected training and validation | `MoleSG/Downstream/train_graph_evalfix.py`, `train_one_fold`, `evaluate_model` | Patience 20, full deterministic validation |
 | Repeated balanced scaffold splits | `MoleSG/Downstream/utils.py`, `scaffold_split` | Seeds 42 to 46, include_chirality=False |
@@ -53,4 +53,6 @@ are retained for checkpoint compatibility. Manuscript prose uses `branch`.
 
 Layer and KAN configuration switches are documented in
 `EXPERIMENT_PARAMETERS.md`. They do not change the declared 16-model panel.
-The older `tables_v2/` metrics and manuscript snapshot remain historical.
+Historical summaries are in `results/historical/`. Model identifiers retain
+their original names. See `paper_label` in `configs/final_model_matrix.tsv` for
+their manuscript display names.

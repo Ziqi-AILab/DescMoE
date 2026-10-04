@@ -19,3 +19,9 @@ For existing weights elsewhere, supply `--pretrain-root /path/to/Model` to
 `scripts/run_model.py`. Corrected finetuned checkpoints must be selected using
 complete validation splits. Old incomplete-batch best checkpoints are not
 accepted as corrected final-test checkpoints.
+
+The 240 downstream checkpoints for concatenation, auxiliary prediction and
+quantile controls were not retained in the research directory. Their recorded
+predictions and lightweight fold results remain available, but reproducing
+model inference for these configurations requires new finetuning. No weights
+or per-molecule predictions are included in this repository.

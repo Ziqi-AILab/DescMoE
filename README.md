@@ -1,7 +1,9 @@
-# paper101
+# DescMoE
 
-Code and lightweight results for **Physicochemical Descriptors as Features,
-Auxiliary Targets, and Branch Selectors in Molecular Pretraining**.
+Code and lightweight results for **DescMoE: Physicochemical Descriptor-Guided
+Mixture-of-Experts Pretraining for Molecular Property Prediction**.
+
+Repository: https://github.com/Ziqi-AILab/DescMoE
 
 The corrected comparison contains 16 neural configurations across eight
 classification datasets and five repeated scaffold splits (640 test runs).
@@ -9,7 +11,10 @@ Five logistic-regression reference families contribute another 200 runs.
 TPSA and MolLogP are studied separately. The configurations include a dense
 backbone, descriptor concatenation, auxiliary prediction, fixed and quantile
 assignment, cross-stage stable random assignment, molecule-level learned
-routing, and ConLoss variants. Historical KAN and layer screens are SI material.
+routing, and ConLoss variants. DescMoE denotes fixed descriptor-interval
+assignment. DescMoE + ConLoss adds the contrastive pretraining objective.
+The other configurations are comparison models, not renamed DescMoE variants.
+Historical KAN and layer screens are SI material.
 
 ## Check the reported statistics without a GPU
 
@@ -47,7 +52,7 @@ Set your own paths. `RUN` should be an empty directory for a new reproduction.
 export ZINC_CSV=/path/to/zinc15_250K.csv
 export ZINC_CACHE=/path/to/zinc15_0.25_geo/preprocess
 export DOWNSTREAM_DATA=/path/to/Downstream/Data
-export RUN=/path/to/paper101_run
+export RUN=/path/to/descmoe_run
 ```
 
 ## Reproduction sequence
@@ -71,11 +76,13 @@ by the original preparation code are not part of the final 16-model matrix.
 ### 2. Pretrain each configuration
 
 The single source of model flags is `configs/final_model_matrix.tsv`.
+Its `paper_label` column connects manuscript names to the original `model` and
+`result_exp` identifiers. Those identifiers and checkpoint keys are unchanged.
 This example prints the command without executing it.
 
 ```bash
 python scripts/run_model.py --phase pretrain \
-  --model p8_tpsa_stable_random_last --zinc-cache "$ZINC_CACHE" --run-root "$RUN"
+  --model p3_tpsa_mofe_last_ffn --zinc-cache "$ZINC_CACHE" --run-root "$RUN"
 ```
 
 Run the same command with `--execute` **inside your Slurm GPU job**. The wrapper
@@ -93,7 +100,7 @@ describe restarting from these component weights as an exact resumed run.
 
 ```bash
 python scripts/run_model.py --phase finetune \
-  --model p8_tpsa_stable_random_last --dataset bbbp \
+  --model p3_tpsa_mofe_last_ffn --dataset bbbp \
   --downstream-data "$DOWNSTREAM_DATA" --run-root "$RUN"
 ```
 
@@ -109,7 +116,7 @@ the distinction between pretraining and downstream losses.
 ```bash
 python scripts/freeze_panel.py --run-root "$RUN"
 python scripts/run_model.py --phase final_test \
-  --model p8_tpsa_stable_random_last --dataset bbbp \
+  --model p3_tpsa_mofe_last_ffn --dataset bbbp \
   --downstream-data "$DOWNSTREAM_DATA" --run-root "$RUN"
 ```
 
@@ -147,11 +154,8 @@ python tests/test_command_entrypoints.py
 
 These are CPU tests, not full training reproductions. The method-to-function
 map is in [docs/METHOD_CODE_MAP.md](docs/METHOD_CODE_MAP.md).
-The release checks and their limits are recorded in [TEST_REPORT.md](TEST_REPORT.md).
 
-`tables_v2/`, `configs/model_matrix.tsv`, the old manuscript snapshot and the
-older plotting scripts are **legacy development material**, not the corrected
-main benchmark. They remain available for historical SI context. Use
-`results/corrected/` and `configs/final_model_matrix.tsv` for the current panel.
-The code package contains no figure files. The methods revision is delivered
-separately and does not silently replace the old manuscript snapshot.
+Use `results/corrected/` for the final panel. Historical layer and KAN summaries
+are isolated in `results/historical/`, with configuration switches in
+`EXPERIMENT_PARAMETERS.md` and identities in `configs/model_matrix.tsv`.
+The package excludes manuscript and figure files.

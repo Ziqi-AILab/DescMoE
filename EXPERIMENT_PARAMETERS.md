@@ -2,20 +2,21 @@
 
 ## Corrected main panel
 
-`configs/final_model_matrix.tsv` defines the 16 configurations. The command
-wrapper reads this table rather than selecting flags from filenames.
+`configs/final_model_matrix.tsv` defines the 16 configurations. `paper_label`
+contains the DescMoE manuscript names. The command wrapper reads the original
+configuration fields rather than selecting flags from filenames.
 
 | Comparison | Pretraining change | Downstream behavior |
 | --- | --- | --- |
 | Dense Base | No descriptor input, target, or branch | Dense N8 encoder |
 | Concatenation, each axis | `--descriptor_use concat` | Same standardized descriptor input |
 | Auxiliary prediction, each axis | `--descriptor_use auxiliary --descriptor_aux_coeff 0.1` | No descriptor regression loss |
-| Fixed assignment, each axis | `--use_prior_moe --expert_type ffn --moe_layer_mode last` | Same fixed thresholds |
-| Fixed + ConLoss, each axis | Above plus `--use_contrastive_expert_loss --contrastive_coff 0.1 --contrastive_temperature 0.1` | No ConLoss |
+| DescMoE, each axis | `--use_prior_moe --expert_type ffn --moe_layer_mode last` | Same fixed thresholds |
+| DescMoE + ConLoss, each axis | Above plus `--use_contrastive_expert_loss --contrastive_coff 0.1 --contrastive_temperature 0.1` | No ConLoss |
 | Quantile assignment, each axis | `--assignment_scheme quantile`, ZINC-fitted boundaries | Frozen pretraining boundaries |
 | Stable random, each axis | `--assignment_scheme stable_random` | Same canonical molecule rule |
 | Stable random + ConLoss, each axis | Random IDs also define positives | Same random branch IDs, no ConLoss |
-| Learned molecule top1, shared | `--use_standard_moe --router_granularity molecule --moe_top_k 1 --moe_aux_loss_coeff 0.01` | Router and balancing loss retained in training |
+| Learned molecule router, shared | `--use_standard_moe --router_granularity molecule --moe_top_k 1 --moe_aux_loss_coeff 0.01` | Router and balancing loss retained in training |
 
 All conditional models use eight MLP branches, one selected branch per molecule
 at layer 8. The first seven layers are shared. Descriptor concatenation is also

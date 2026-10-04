@@ -14,7 +14,7 @@ def make_model(d_atom, d_edge, N=2, d_model=128, h=8, dropout=0.1, attenuation_l
                N_dense=2, leaky_relu_slope=0.0, dense_output_nonlinearity='relu', distance_matrix_kernel='softmax',
                n_output=1, scale_norm=True, init_type='uniform', n_generator_layers=1,
                aggregation_type='mean',num_labels=1,
-               # ---- MoFE flags (default OFF = original behaviour) ----
+               # ---- DescMoE flags (default OFF = original behaviour) ----
                use_prior_moe=False, num_experts=8, expert_type='ffn',
                kan_expert_indices=None, kan_grid_size=5, kan_spline_order=3,
                moe_layer_mode='all', moe_layer_indices=None,
@@ -263,7 +263,7 @@ class Generator(nn.Module):
 
 
 def _resolve_moe_layer_indices(N, moe_layer_mode='all', moe_layer_indices=None):
-    """Return zero-based layer indices that should use MoE/MoFE FFNs.
+    """Return zero-based layer indices that should use learned MoE or DescMoE FFNs.
 
     User-facing odd/even modes use one-based layer numbers: odd means
     layer 1, 3, 5...; even means layer 2, 4, 6....
@@ -337,7 +337,7 @@ class EncoderLayer(nn.Module):
         node_hidden_first, edge_hidden_temp = self.self_attn(node_hidden, node_hidden, edge_hidden, adj_matrix, mask)
         # the first residue block
         node_hidden_first = node_hidden + self.dropout(self.norm(node_hidden_first))
-        # ---- MoFE: pass expert_ids to MoE FFN, else vanilla FFN ----
+        # ---- DescMoE: pass expert_ids to MoE FFN, else vanilla FFN ----
         if self._uses_descriptor:
             if descriptor_values is None:
                 raise ValueError('descriptor_values are required for descriptor concatenation')
