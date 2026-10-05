@@ -1,102 +1,99 @@
 # DescMoE
 
-Code and lightweight results for **DescMoE: Physicochemical Descriptor-Guided
-Mixture-of-Experts Pretraining for Molecular Property Prediction**.
+Code for **DescMoE: Physicochemical Descriptor-Guided Mixture-of-Experts
+Pretraining for Molecular Property Prediction**.
 
-Repository: https://github.com/Ziqi-AILab/DescMoE
+DescMoE uses molecular descriptors to assign molecules to computation branches
+during molecular pretraining and downstream property prediction.
 
-The corrected comparison contains 16 neural configurations across eight
-classification datasets and five repeated scaffold splits (640 test runs).
-Five logistic-regression reference families contribute another 200 runs.
-TPSA and MolLogP are studied separately. The configurations include a dense
-backbone, descriptor concatenation, auxiliary prediction, fixed and quantile
-assignment, cross-stage stable random assignment, molecule-level learned
-routing, and ConLoss variants. DescMoE denotes fixed descriptor-interval
-assignment. DescMoE + ConLoss adds the contrastive pretraining objective.
-The other configurations are comparison models, not renamed DescMoE variants.
-Historical KAN and layer screens are SI material.
+## Overview
 
-## Check the reported statistics without a GPU
+DescMoE partitions molecules by topological polar surface area (TPSA) or
+Wildman-Crippen MolLogP. Each descriptor is studied in a separate configuration.
+Fixed descriptor intervals select one of eight multilayer perceptron (MLP)
+branches in the final graph Transformer layer. An optional descriptor-aware
+contrastive loss (ConLoss) groups representations from the same region during
+pretraining.
 
-```bash
-python -m pip install -r requirements-analysis.txt
-python scripts/summarize_reported_results.py --check
+## Architecture
+
+```text
+Molecular graph -> Shared graph layers 1 to 7 -> Graph layer 8 -> Prediction
+                                               Attention
+                                               Descriptor-selected MLP
 ```
 
-This rebuilds dataset means, sample SDs, macro ROC-AUC, paired contrasts, and
-10,000-iteration hierarchical bootstrap intervals from `results/corrected/`.
-Outputs go to `runs/rebuilt_tables/`. It does not download molecular data or
-run a model. Included CSV values retain their original precision.
+| Component | Configuration |
+| --- | --- |
+| Graph encoder | 8 Transformer layers, hidden size 256, 8 attention heads |
+| DescMoE | Replaces only the layer-8 FFN with 8 MLP branches |
+| Assignment | One branch for all valid nodes of a molecule |
+| ConLoss | Pretraining only, weight 0.1, temperature 0.1 |
+| Downstream transfer | Finetune the full graph encoder and task head |
 
-## Environment and external files
+Dense Base, concatenation, auxiliary prediction, quantile assignment, stable
+random assignment and learned routing are comparison models. Their settings
+are listed in [Experiment parameters](EXPERIMENT_PARAMETERS.md).
+
+## Installation
 
 ```bash
+git clone https://github.com/Ziqi-AILab/DescMoE.git
+cd DescMoE
 conda env create -f environment.yml
 conda activate MoleSG
 ```
 
-The source uses the MoleSG architecture. The supplied environment records
-the project versions, including RDKit 2022.09.5. CUDA training needs a compatible
-driver. GPU extension packages may need platform-specific installation.
+The environment specifies Python 3.10 and RDKit 2022.09.5. GPU execution requires
+a compatible CUDA driver. GPU extension packages may need platform-specific
+installation. For statistics only, use the smaller installation below.
 
-Datasets, processed caches, checkpoints, raw predictions, embeddings, images,
-and logs are **not distributed here**. See [data/README.md](data/README.md) for
-required file formats and [checkpoints/README.md](checkpoints/README.md) for
-checkpoint paths. Exact numerical training reproduction requires the original
-processed row order and pretraining cache, not an independently filtered
-MoleculeNet download. Obtain those external artifacts from the authors.
+## Data Preparation
 
-Set your own paths. `RUN` should be an empty directory for a new reproduction.
+Datasets, processed caches and weights are not included. Exact training
+reproduction requires the original processed row order and ZINC15 cache from
+the authors. See [data formats](data/README.md) and
+[checkpoint locations](checkpoints/README.md). Set the paths to your external
+files and choose an empty output directory.
 
 ```bash
 export ZINC_CSV=/path/to/zinc15_250K.csv
 export ZINC_CACHE=/path/to/zinc15_0.25_geo/preprocess
 export DOWNSTREAM_DATA=/path/to/Downstream/Data
 export RUN=/path/to/descmoe_run
-```
 
-## Reproduction sequence
-
-### 1. Prepare assignment arrays on local CPU
-
-```bash
 python scripts/prepare_matched_control_assignments.py \
   --zinc-csv "$ZINC_CSV" --downstream-data "$DOWNSTREAM_DATA" \
   --output-dir "$RUN/control_data" \
   --zinc-output "$RUN/control_data/descriptor_controls.npz"
 ```
 
-Statistics and score thresholds are fitted on ZINC15, then reused downstream.
-The canonical-SMILES random rule does not shuffle each downstream dataset.
-`configs/reported_descriptor_statistics.json` records the parameters used in
-the reported experiment for comparison. Do not refit boundaries on downstream
-labels or validation performance. Extra legacy and sparse-bin arrays produced
-by the original preparation code are not part of the final 16-model matrix.
+Preparation runs on local CPU. Fixed intervals remain predefined. Descriptor
+statistics, quantile boundaries and stable-random thresholds are fitted on
+ZINC15 and then reused downstream.
 
-### 2. Pretrain each configuration
+## Training and Evaluation
 
-The single source of model flags is `configs/final_model_matrix.tsv`.
-Its `paper_label` column connects manuscript names to the original `model` and
-`result_exp` identifiers. Those identifiers and checkpoint keys are unchanged.
-This example prints the command without executing it.
+The examples use TPSA DescMoE (`p3_tpsa_mofe_last_ffn`). Select another `model`
+from [the final configuration table](configs/final_model_matrix.tsv) for
+MolLogP, ConLoss or a comparison model. `paper_label` gives the manuscript name.
+
+**`run_model.py` prints commands by default.** Add `--execute` only inside an
+allocated Slurm GPU job. The wrapper does not submit jobs. Use one GPU and your
+cluster's partition, QoS and time settings. Data preparation, freezing and
+statistics run on local CPU, without Slurm.
+
+### 1. Pretraining
 
 ```bash
 python scripts/run_model.py --phase pretrain \
   --model p3_tpsa_mofe_last_ffn --zinc-cache "$ZINC_CACHE" --run-root "$RUN"
 ```
 
-Run the same command with `--execute` **inside your Slurm GPU job**. The wrapper
-does not submit jobs or start a watcher. Request one GPU, activate the Conda
-environment, and set your cluster's partition, QoS and time in the job script.
-Pretraining uses 300 epochs, batch size 32 and seed 42. Existing completed
-pretraining checkpoints can instead be supplied with `--pretrain-root`.
-No model downloads occur in the training wrapper.
+Pretraining uses ZINC15 250K, 300 epochs, batch size 32 and seed 42. To reuse
+completed weights during finetuning, pass `--pretrain-root /path/to/Model`.
 
-The original resume implementation is retained, but it does not save optimizer
-state or all decoder states. It is not exact trajectory restoration. Do not
-describe restarting from these component weights as an exact resumed run.
-
-### 3. Finetune using complete validation splits
+### 2. Validation-based finetuning
 
 ```bash
 python scripts/run_model.py --phase finetune \
@@ -104,14 +101,17 @@ python scripts/run_model.py --phase finetune \
   --downstream-data "$DOWNSTREAM_DATA" --run-root "$RUN"
 ```
 
-Repeat for all 16 configurations and `bbbp,tox21,toxcast,sider,clintox,bace,hiv,muv`.
-Each command runs five seeds, 42 to 46, when executed in a GPU job. The runner
-uses the eight-layer backbone, complete deterministic validation, patience 20,
-and no test evaluation. It saves validation predictions and the best checkpoint.
-See [EXPERIMENT_PARAMETERS.md](EXPERIMENT_PARAMETERS.md) for all flags and
-the distinction between pretraining and downstream losses.
+Each executed job runs five repeated balanced scaffold splits with seeds 42
+to 46. Complete validation ROC-AUC selects the checkpoint with patience 20.
+Finetuning does not evaluate test data. Validation and test loaders use
+`shuffle=False, drop_last=False`.
 
-### 4. Freeze the complete panel, then evaluate test once
+### 3. Freeze the panel and evaluate test
+
+First complete finetuning for **all 16 configurations and all eight datasets**
+(`bbbp`, `tox21`, `toxcast`, `sider`, `clintox`, `bace`, `hiv`, `muv`). The freeze
+command requires all **640 validation outputs and corresponding checkpoints**.
+The single BBBP example above is not sufficient.
 
 ```bash
 python scripts/freeze_panel.py --run-root "$RUN"
@@ -120,12 +120,25 @@ python scripts/run_model.py --phase final_test \
   --downstream-data "$DOWNSTREAM_DATA" --run-root "$RUN"
 ```
 
-Freezing is a local CPU check of all 640 validation outputs and checkpoint
-paths. It does not select models by test performance. Submit each final-test
-command as a GPU job with `--execute`. Final test requires the run-specific
-frozen definition. Existing test outputs are not overwritten by the wrapper.
+After freezing, execute final test for every model-dataset combination in GPU
+jobs. Each uses its validation-selected checkpoint and the frozen definition.
+The wrapper refuses to overwrite existing test outputs.
 
-### 5. CPU baselines and aggregation
+## Results Reproduction
+
+### Rebuild the reported statistics without a GPU
+
+```bash
+python -m pip install -r requirements-analysis.txt
+python scripts/summarize_reported_results.py --check
+```
+
+The included tables contain 640 neural runs and 200 logistic-regression
+reference runs. This command rebuilds dataset means, sample SDs, macro ROC-AUC,
+paired contrasts and 10,000-draw bootstrap intervals in `runs/rebuilt_tables/`.
+No molecular data or model weights are needed. See [included results](results/corrected/README.md).
+
+### Run CPU references and summarize new experiments
 
 ```bash
 python scripts/run_cpu_descriptor_ecfp_baselines.py \
@@ -136,26 +149,27 @@ python analysis/build_p0_corrected_panel.py \
   --output-dir "$RUN/summary"
 ```
 
-CPU baselines use the same scaffold implementation. Their regularization is
-selected using validation only. Aggregation reads completed predictions,
-checks sample-ID coverage, and rebuilds the final statistics.
+CPU references use the same scaffold splits and validation-only regularization
+selection. Run aggregation after all neural test outputs are complete.
 
-## Code checks and paper correspondence
+## Project Structure
 
-```bash
-python scripts/check_repository.py
-python tests/test_descriptor_assignment.py
-python tests/test_model_components.py
-python tests/test_p8_control_invariants.py
-python tests/test_final_architecture_loads.py
-python tests/test_release_workflow.py
-python tests/test_command_entrypoints.py
+```text
+MoleSG/     Pretraining, graph encoder and downstream implementation
+configs/    Model configurations and descriptor statistics
+scripts/    Data preparation, training wrappers and result checks
+analysis/   Prediction aggregation and paired statistics
+results/    Lightweight final tables and separate historical SI results
+tests/      CPU component and workflow checks
+docs/       Method mapping and reproduction notes
 ```
 
-These are CPU tests, not full training reproductions. The method-to-function
-map is in [docs/METHOD_CODE_MAP.md](docs/METHOD_CODE_MAP.md).
+See [parameter switches](EXPERIMENT_PARAMETERS.md),
+[method-to-code mapping](docs/METHOD_CODE_MAP.md) and
+[reproduction notes](docs/REPRODUCTION_NOTES.md) for tests, historical screens
+and checkpoint limitations.
 
-Use `results/corrected/` for the final panel. Historical layer and KAN summaries
-are isolated in `results/historical/`, with configuration switches in
-`EXPERIMENT_PARAMETERS.md` and identities in `configs/model_matrix.tsv`.
-The package excludes manuscript and figure files.
+## Acknowledgments
+
+This implementation builds on MoleSG's graph and SMILES pretraining framework.
+The upstream MoleSG names are retained in the source tree.
