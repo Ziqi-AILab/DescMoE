@@ -15,6 +15,8 @@ branches in the final graph Transformer layer. An optional descriptor-aware
 contrastive loss (ConLoss) groups representations from the same region during
 pretraining.
 
+[![DescMoE overview](docs/assets/overview.png)](docs/assets/overview.png)
+
 ## Architecture
 
 ```text
@@ -173,3 +175,5 @@ and checkpoint limitations.
 
 This implementation builds on MoleSG's graph and SMILES pretraining framework.
 The upstream MoleSG names are retained in the source tree.
+
+We thank the High Performance Computing Platform (HPC) at Xi’an Jiaotong-Liverpool University for providing computing resources.

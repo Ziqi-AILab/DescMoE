@@ -66,3 +66,6 @@ __pycache__/
 *.pptx
 *.tiff
 *.tif
+
+# README overview image
+!/docs/assets/overview.png
